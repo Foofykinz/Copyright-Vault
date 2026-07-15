@@ -108,6 +108,21 @@ export function ClientPage() {
                 </div>
               </Link>
               <div className="account-card-actions">
+                {account.profileUrl ? (
+                  <a
+                    href={account.profileUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-sm"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Open profile
+                  </a>
+                ) : (
+                  <button className="btn btn-sm" disabled title="Add a profile URL to enable this">
+                    Open profile
+                  </button>
+                )}
                 <button className="btn btn-sm" onClick={() => setEditingAccount(account)}>
                   Edit
                 </button>

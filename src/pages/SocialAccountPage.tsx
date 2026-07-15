@@ -70,18 +70,18 @@ export function SocialAccountPage() {
           <div className="page-subtitle">{headingLabel}</div>
         </div>
         <div className="page-actions">
-          <button
-            className="btn"
-            onClick={() =>
-              setPullMessage(
-                socialAccount.platform === "tiktok" || socialAccount.platform === "x"
-                  ? "Use the Viral DRM Collector browser extension on this account's page to pull videos — open the profile, click the extension icon, scan, and send."
-                  : "The browser extension doesn't support this platform yet. Add videos manually for now."
-              )
-            }
-          >
-            Pull recent videos
-          </button>
+          {socialAccount.profileUrl ? (
+            <a href={socialAccount.profileUrl} target="_blank" rel="noreferrer" className="btn">
+              Open profile
+            </a>
+          ) : (
+            <button
+              className="btn"
+              onClick={() => setPullMessage("Add a profile URL to this social account first (from the client page), then open it to use the extension.")}
+            >
+              Open profile
+            </button>
+          )}
           <button className="btn btn-primary" onClick={() => setAddingVideo(true)}>
             + Add Video
           </button>
@@ -90,6 +90,8 @@ export function SocialAccountPage() {
 
       <div className="hint" style={{ marginBottom: 12 }}>
         Last pulled: {socialAccount.lastPullAt ? formatDisplayDate(socialAccount.lastPullAt) : "Never"}
+        {(socialAccount.platform === "tiktok" || socialAccount.platform === "x") &&
+          " · Open the profile above, then use the Viral DRM Collector extension to scan and send videos."}
       </div>
 
       {pullMessage && <div className="inline-info">{pullMessage}</div>}
