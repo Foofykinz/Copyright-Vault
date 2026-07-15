@@ -19,8 +19,10 @@ const shared = {
   logLevel: "info",
 };
 
-// The popup (loaded via <script type="module">) can be a real ES module.
+// The background service worker ("type": "module" in manifest.json) and the side panel page
+// (loaded via <script type="module">) can both be real ES modules.
 const esmEntryPoints = {
+  background: path.join(dirname, "src/background/index.ts"),
   popup: path.join(dirname, "src/popup/index.ts"),
 };
 

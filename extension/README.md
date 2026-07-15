@@ -14,10 +14,12 @@ the piece the web app's "Pull recent videos" button was waiting on.
 - **Instagram / Facebook**: not implemented yet — both platforms' web apps are the most obfuscated
   and change the most often, so a scraper for them needs more dedicated upkeep than the other two.
   Keep using manual entry for these until a later pass adds them.
-- Nothing is sent automatically. Every scan populates a review list in the popup with checkboxes —
-  you pick what actually gets sent.
+- Nothing is sent automatically. Every scan populates a review list with checkboxes — you pick
+  what actually gets sent.
 - X only renders tweets currently scrolled into view, so scan, scroll down, and scan again to pick
-  up more from a long profile — results accumulate in the popup until you close it.
+  up more from a long profile — results accumulate until you send them.
+- The UI is a **side panel**, not a popup — it stays open and docked while you scroll and interact
+  with the page, and your selections/scan results survive if it does get closed.
 
 ## Setup
 
@@ -39,7 +41,10 @@ the piece the web app's "Pull recent videos" button was waiting on.
    - Go to `chrome://extensions` (or `edge://extensions`)
    - Enable "Developer mode"
    - Click "Load unpacked" and select `extension/dist`
-5. **Connect it**: click the extension's toolbar icon, and in Settings enter:
+5. **Pin the icon**: click the puzzle-piece icon 🧩 in the toolbar, find "Viral DRM Collector", and
+   click its pin so it shows directly in the toolbar instead of being buried in that menu.
+6. **Connect it**: click the extension's toolbar icon — this opens the side panel on the right side
+   of the browser window (not a dropdown popup). In Settings enter:
    - API base URL — your Worker's URL, e.g. `https://viral-drm.yourname.workers.dev`
    - Extension API token — the same value you set in step 2
    - Click Connect. The browser will ask you to confirm permission to talk to that URL — accept it.
@@ -47,13 +52,14 @@ the piece the web app's "Pull recent videos" button was waiting on.
 ## Using it
 
 1. Open a client's TikTok profile (`tiktok.com/@handle`) or X profile (`x.com/handle`).
-2. Click the extension icon, pick the Client and Social Account (auto-filtered to the matching
-   platform when possible).
+2. Click the extension icon to open the side panel (or it may already be open from before — it
+   stays docked across page navigation). Pick the Client and Social Account (auto-filtered to the
+   matching platform when possible).
 3. Click "Scan this page". Review the videos found — uncheck anything that shouldn't be sent.
 4. Click "Send N selected". Sent videos disappear from the list; anything that failed stays so you
    can retry.
 5. On TikTok, scroll down to load more videos and scan again before sending if you want the whole
-   history in one pass.
+   history in one pass. The side panel stays open while you scroll, unlike a popup would.
 
 ## Rebuilding after changes
 

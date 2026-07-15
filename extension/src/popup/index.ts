@@ -1,4 +1,5 @@
 import { getConfig, updateConfig } from "../lib/storage";
+import { getSession, updateSession } from "../lib/session";
 import { extensionApi } from "../lib/api";
 import { SCAN_MESSAGE, type ScanResult, type ScrapedVideo } from "../lib/scraped";
 import type { Client, ExtensionVideoImportInput, Platform, SocialAccount } from "../../../shared/types";
@@ -87,12 +88,24 @@ async function loadClients(): Promise<void> {
   }
 }
 
+function persistSession(): void {
+  void updateSession({
+    selectedClientId: state.selectedClientId,
+    selectedSocialAccountId: state.selectedSocialAccountId,
+    scannedVideos: [...state.scannedVideos.values()],
+    selectedKeys: [...state.selectedKeys],
+  });
+}
+
 async function init(): Promise<void> {
   const config = await getConfig();
+  const session = await getSession();
   state.apiBaseUrl = config.apiBaseUrl;
   state.apiToken = config.apiToken;
-  state.selectedClientId = config.lastClientId ?? "";
-  state.selectedSocialAccountId = config.lastSocialAccountId ?? "";
+  state.selectedClientId = session.selectedClientId || config.lastClientId || "";
+  state.selectedSocialAccountId = session.selectedSocialAccountId || config.lastSocialAccountId || "";
+  state.scannedVideos = new Map(session.scannedVideos.map((v) => [v.key, v]));
+  state.selectedKeys = new Set(session.selectedKeys);
 
   const tab = await activeTab();
   state.tabPlatform = detectTabPlatform(tab?.url);
@@ -153,6 +166,7 @@ async function scanActiveTab(): Promise<void> {
       state.scannedVideos.set(video.key, video);
       state.selectedKeys.add(video.key);
     }
+    persistSession();
     state.status = `Found ${result.videos.length} video${result.videos.length === 1 ? "" : "s"} on this scan (${state.scannedVideos.size} total so far). Scroll down and scan again to pick up more.`;
   } catch {
     state.error = "Open a TikTok profile (tiktok.com/@handle) or an X profile/timeline page, then try scanning again.";
@@ -203,6 +217,7 @@ async function sendSelected(): Promise<void> {
   }
 
   await updateConfig({ lastClientId: state.selectedClientId, lastSocialAccountId: state.selectedSocialAccountId });
+  persistSession();
 
   state.busy = false;
   state.status =
@@ -260,6 +275,7 @@ function renderVideoRow(video: ScrapedVideo): HTMLElement {
   checkbox.addEventListener("change", () => {
     if (checkbox.checked) state.selectedKeys.add(video.key);
     else state.selectedKeys.delete(video.key);
+    persistSession();
   });
 
   const meta = el("div", { className: "meta" }, [
@@ -296,7 +312,11 @@ function renderMainView(): HTMLElement {
   clientSelect.addEventListener("change", () => {
     state.selectedClientId = clientSelect.value;
     state.selectedSocialAccountId = "";
-    void loadSocialAccounts().then(render);
+    persistSession();
+    void loadSocialAccounts().then(() => {
+      persistSession();
+      render();
+    });
   });
 
   const filteredAccounts = state.tabPlatform
@@ -321,6 +341,7 @@ function renderMainView(): HTMLElement {
   const accountSelect = accountField.querySelector("select") as HTMLSelectElement;
   accountSelect.addEventListener("change", () => {
     state.selectedSocialAccountId = accountSelect.value;
+    persistSession();
   });
   if (accountsToShow.length > 0 && !accountsToShow.some((a) => a.id === state.selectedSocialAccountId)) {
     state.selectedSocialAccountId = accountsToShow[0].id;
