@@ -1,11 +1,11 @@
-import type { Env } from "../../../lib/env";
+import type { ApiHandler } from "../../../lib/env";
 import { errorResponse, json, readJson } from "../../../lib/http";
 import { generateId, nowIso } from "../../../lib/ids";
 import { getClientOrThrow, mapSocialAccount } from "../../../lib/db";
 import { optionalUrl, requirePlatform, requireString } from "../../../lib/validation";
 import type { CreateSocialAccountInput } from "../../../../shared/types";
 
-export const onRequestGet: PagesFunction<Env> = async (context) => {
+export const onRequestGet: ApiHandler = async (context) => {
   try {
     const clientId = context.params.id as string;
     await getClientOrThrow(context.env.DB, clientId);
@@ -20,7 +20,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   }
 };
 
-export const onRequestPost: PagesFunction<Env> = async (context) => {
+export const onRequestPost: ApiHandler = async (context) => {
   try {
     const clientId = context.params.id as string;
     await getClientOrThrow(context.env.DB, clientId);

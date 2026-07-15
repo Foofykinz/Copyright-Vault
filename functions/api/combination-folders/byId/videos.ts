@@ -1,11 +1,11 @@
-import type { Env } from "../../../lib/env";
+import type { ApiHandler } from "../../../lib/env";
 import { errorResponse, json, readJson } from "../../../lib/http";
 import { nowIso } from "../../../lib/ids";
 import { getCombinationFolderOrThrow } from "../../../lib/db";
 import { withComputedFolderFields } from "../../../lib/folders";
 import { requireStringArray } from "../../../lib/validation";
 
-export const onRequestPost: PagesFunction<Env> = async (context) => {
+export const onRequestPost: ApiHandler = async (context) => {
   try {
     const folderId = context.params.id as string;
     const folder = await getCombinationFolderOrThrow(context.env.DB, folderId);

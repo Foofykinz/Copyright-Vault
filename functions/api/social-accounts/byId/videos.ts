@@ -1,4 +1,4 @@
-import type { Env } from "../../../lib/env";
+import type { ApiHandler } from "../../../lib/env";
 import { errorResponse, json, readJson } from "../../../lib/http";
 import { generateId, nowIso } from "../../../lib/ids";
 import { getSocialAccountOrThrow, mapVideo } from "../../../lib/db";
@@ -6,7 +6,7 @@ import { optionalNonNegativeInt, optionalString, requireIsoDate, requireUrl } fr
 import { computeDeadline } from "../../../../shared/dates";
 import type { CombinationFolderSummary, CreateVideoInput, VideoWithDeadline } from "../../../../shared/types";
 
-export const onRequestGet: PagesFunction<Env> = async (context) => {
+export const onRequestGet: ApiHandler = async (context) => {
   try {
     const socialAccountId = context.params.id as string;
     const account = await getSocialAccountOrThrow(context.env.DB, socialAccountId);
@@ -57,7 +57,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   }
 };
 
-export const onRequestPost: PagesFunction<Env> = async (context) => {
+export const onRequestPost: ApiHandler = async (context) => {
   try {
     const socialAccountId = context.params.id as string;
     const account = await getSocialAccountOrThrow(context.env.DB, socialAccountId);

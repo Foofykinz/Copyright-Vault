@@ -1,4 +1,4 @@
-import type { Env } from "../../lib/env";
+import type { ApiHandler } from "../../lib/env";
 import { errorResponse, json, readJson } from "../../lib/http";
 import { nowIso } from "../../lib/ids";
 import { getCombinationFolderOrThrow, mapVideo } from "../../lib/db";
@@ -7,7 +7,7 @@ import { optionalString, requireString } from "../../lib/validation";
 import { computeDeadline } from "../../../shared/dates";
 import type { CombinationFolderSummary, UpdateCombinationFolderInput, VideoWithDeadline } from "../../../shared/types";
 
-export const onRequestGet: PagesFunction<Env> = async (context) => {
+export const onRequestGet: ApiHandler = async (context) => {
   try {
     const id = context.params.id as string;
     const folder = await getCombinationFolderOrThrow(context.env.DB, id);
@@ -63,7 +63,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   }
 };
 
-export const onRequestPatch: PagesFunction<Env> = async (context) => {
+export const onRequestPatch: ApiHandler = async (context) => {
   try {
     const id = context.params.id as string;
     await getCombinationFolderOrThrow(context.env.DB, id);
@@ -98,7 +98,7 @@ export const onRequestPatch: PagesFunction<Env> = async (context) => {
   }
 };
 
-export const onRequestDelete: PagesFunction<Env> = async (context) => {
+export const onRequestDelete: ApiHandler = async (context) => {
   try {
     const id = context.params.id as string;
     await getCombinationFolderOrThrow(context.env.DB, id);

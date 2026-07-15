@@ -1,4 +1,4 @@
-import type { Env } from "../../lib/env";
+import type { ApiHandler, Env } from "../../lib/env";
 import { errorResponse, json, readJson, UnauthorizedError, ValidationError } from "../../lib/http";
 import { generateId, nowIso } from "../../lib/ids";
 import { getClientOrThrow, getSocialAccountOrThrow, mapVideo } from "../../lib/db";
@@ -41,7 +41,7 @@ import type { ExtensionVideoImportInput, VideoWithDeadline } from "../../../shar
  * Response 201:
  * { "video": { ...VideoWithDeadline } }
  */
-export const onRequestPost: PagesFunction<Env> = async (context) => {
+export const onRequestPost: ApiHandler = async (context) => {
   try {
     requireBearerToken(context.request, context.env);
 

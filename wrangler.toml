@@ -1,7 +1,12 @@
 name = "viral-drm"
-pages_build_output_dir = "dist"
+main = "worker/index.ts"
 compatibility_date = "2026-07-15"
 compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
 
 [[d1_databases]]
 binding = "DB"

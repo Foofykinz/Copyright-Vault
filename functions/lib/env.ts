@@ -3,3 +3,12 @@ export interface Env {
   /** Optional shared secret the future browser extension authenticates with. Unset in local dev. */
   EXTENSION_API_TOKEN?: string;
 }
+
+/** Minimal per-request context passed to each API handler by the worker's manual router. */
+export interface ApiContext<E = Env> {
+  request: Request;
+  env: E;
+  params: Record<string, string>;
+}
+
+export type ApiHandler<E = Env> = (ctx: ApiContext<E>) => Promise<Response> | Response;

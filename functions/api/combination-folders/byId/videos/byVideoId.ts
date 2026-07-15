@@ -1,9 +1,9 @@
-import type { Env } from "../../../../lib/env";
+import type { ApiHandler } from "../../../../lib/env";
 import { errorResponse, json } from "../../../../lib/http";
 import { getCombinationFolderOrThrow } from "../../../../lib/db";
 import { withComputedFolderFields } from "../../../../lib/folders";
 
-export const onRequestDelete: PagesFunction<Env> = async (context) => {
+export const onRequestDelete: ApiHandler = async (context) => {
   try {
     const folderId = context.params.id as string;
     const videoId = context.params.videoId as string;

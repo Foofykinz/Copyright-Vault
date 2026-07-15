@@ -1,10 +1,10 @@
-import type { Env } from "../../../lib/env";
+import type { ApiHandler } from "../../../lib/env";
 import { errorResponse, json } from "../../../lib/http";
 import { getClientOrThrow } from "../../../lib/db";
 import { computeDeadline } from "../../../../shared/dates";
 import type { ClientStats } from "../../../../shared/types";
 
-export const onRequestGet: PagesFunction<Env> = async (context) => {
+export const onRequestGet: ApiHandler = async (context) => {
   try {
     const clientId = context.params.id as string;
     await getClientOrThrow(context.env.DB, clientId);
