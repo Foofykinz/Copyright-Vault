@@ -1,0 +1,10 @@
+name = "viral-drm"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-07-15"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "viral-drm-db"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"

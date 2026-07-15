@@ -1,0 +1,22 @@
+/** Formats large view counts compactly: 1250 -> "1.3K", 1250000 -> "1.3M". Full integer stays in the database. */
+export function formatViewCount(count: number): string {
+  if (count < 1000) return String(count);
+  if (count < 1_000_000) return `${(count / 1000).toFixed(1).replace(/\.0$/, "")}K`;
+  if (count < 1_000_000_000) return `${(count / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  return `${(count / 1_000_000_000).toFixed(1).replace(/\.0$/, "")}B`;
+}
+
+/** Formats an ISO date/datetime string as a compact display date, e.g. "Jul 15, 2026". */
+export function formatDisplayDate(iso: string | null): string {
+  if (!iso) return "—";
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!match) return "—";
+  const [, y, m, d] = match;
+  const date = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+  return date.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+export const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
