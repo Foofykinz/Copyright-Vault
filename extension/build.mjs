@@ -30,6 +30,7 @@ const esmEntryPoints = {
 // self-contained IIFEs with no top-level import/export statements.
 const iifeEntryPoints = {
   "content-tiktok": path.join(dirname, "src/content/tiktok.ts"),
+  "content-tiktok-network": path.join(dirname, "src/content/tiktok-network.ts"),
   "content-x": path.join(dirname, "src/content/x.ts"),
 };
 

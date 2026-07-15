@@ -5,9 +5,12 @@ the piece the web app's "Pull recent videos" button was waiting on.
 
 ## What it does and doesn't do
 
-- **TikTok**: reads the structured data TikTok embeds in the page for a profile's own "Videos" tab
-  (not the separate "Reposts" tab, so reposts are excluded by construction). Gives real caption,
-  publish date, and view count.
+- **TikTok**: intercepts the internal API response TikTok's own page uses to render the "Videos"
+  tab (not the separate "Reposts" tab, so reposts are excluded by construction), rather than
+  reading embedded page data — TikTok no longer server-renders the video list at all, it's fetched
+  client-side. Gives real caption, publish date, and view count. **Refresh the TikTok tab after
+  installing/updating the extension** so the interceptor is in place before the page's own first
+  request fires — it won't see anything from before it loaded.
 - **X**: reads whatever tweets are currently rendered on a profile/timeline page. Skips reposts and
   quote-tweet embeds, and only keeps tweets that contain a video. Caption and date are reliable;
   view count is best-effort (X doesn't always expose it in a stable way).
@@ -70,8 +73,9 @@ npm run watch     # rebuild on save; reload the unpacked extension in the browse
 
 ## Known fragility
 
-TikTok's and X's page structure isn't a public API — both companies can and do change their
-frontend without notice, which will break the corresponding content script. If a scan stops
-finding videos, that's the most likely reason; the parsing logic in
-`src/content/tiktok.ts` and `src/content/x.ts` will need updating to match whatever the page
-looks like at that point.
+TikTok's and X's page structure (and TikTok's internal API response shape) isn't public and isn't
+stable — both companies can and do change it without notice, which will break the corresponding
+content script. If a scan stops finding videos, that's the most likely reason; the parsing logic in
+`src/content/tiktok-network.ts` (TikTok's `/api/post/item_list` response shape),
+`src/content/tiktok.ts`, and `src/content/x.ts` will need updating to match whatever the
+platform looks like at that point.
