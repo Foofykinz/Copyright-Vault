@@ -16,6 +16,15 @@ export function formatDisplayDate(iso: string | null): string {
   return date.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });
 }
 
+/** Truncates freeform text (e.g. a long caption standing in for a title) to at most `maxWords` words. */
+export function truncateWords(text: string, maxWords = 12): string {
+  const trimmed = text.trim().replace(/\s+/g, " ");
+  if (!trimmed) return trimmed;
+  const words = trimmed.split(" ");
+  if (words.length <= maxWords) return trimmed;
+  return `${words.slice(0, maxWords).join(" ")}…`;
+}
+
 export const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",

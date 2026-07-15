@@ -1,5 +1,6 @@
 import type { ScanResult, ScrapedVideo } from "../lib/scraped";
 import { SCAN_MESSAGE } from "../lib/scraped";
+import { truncateWords } from "../../../shared/format";
 
 interface TikTokItem {
   id: string;
@@ -39,7 +40,7 @@ function scan(): ScanResult {
       key: `tiktok:${item.id}`,
       videoUrl: `https://www.tiktok.com/@${author}/video/${item.id}`,
       publicationDate: Number.isFinite(createTime) ? new Date(createTime * 1000).toISOString() : new Date().toISOString(),
-      caption: (item.desc ?? "").trim(),
+      caption: truncateWords(item.desc ?? ""),
       viewCount: Number.isFinite(viewCountRaw) ? viewCountRaw : null,
     };
   });

@@ -1,5 +1,6 @@
 import type { ScanResult, ScrapedVideo } from "../lib/scraped";
 import { SCAN_MESSAGE } from "../lib/scraped";
+import { truncateWords } from "../../../shared/format";
 
 /**
  * X only renders tweets currently scrolled into view (virtualized timeline), so a scan only
@@ -59,7 +60,7 @@ function scan(): ScanResult {
     const publicationDate = timeEl?.getAttribute("datetime") ?? new Date().toISOString();
 
     const captionEl = article.querySelector('[data-testid="tweetText"]');
-    const caption = (captionEl?.textContent ?? "").trim();
+    const caption = truncateWords(captionEl?.textContent ?? "");
 
     const analyticsLink = article.querySelector('a[href$="/analytics"]');
     const viewCount = analyticsLink ? parseCompactNumber(analyticsLink.textContent ?? "") : null;

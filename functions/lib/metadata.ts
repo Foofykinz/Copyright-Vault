@@ -1,4 +1,5 @@
 import type { Platform, VideoMetadataResult } from "../../shared/types";
+import { truncateWords } from "../../shared/format";
 
 const YOUTUBE_ID_RE = /(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/))([\w-]{11})/;
 
@@ -15,15 +16,6 @@ export function detectPlatform(url: string): Platform {
   if (host === "facebook.com" || host.endsWith(".facebook.com") || host === "fb.watch") return "facebook";
   if (host === "twitter.com" || host === "x.com") return "x";
   return "other";
-}
-
-/** Truncates long freeform text to a single leading sentence, for use as a caption/title. */
-function toTitleFromText(text: string, maxLength = 200): string {
-  const trimmed = text.trim().replace(/\s+/g, " ");
-  if (trimmed.length <= maxLength) return trimmed;
-  const sentenceMatch = /^.*?[.!?](?=\s|$)/.exec(trimmed);
-  if (sentenceMatch && sentenceMatch[0].length <= maxLength) return sentenceMatch[0].trim();
-  return `${trimmed.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
 async function fetchYouTube(url: string, apiKey: string | undefined): Promise<VideoMetadataResult> {
@@ -74,7 +66,7 @@ async function fetchOEmbedTitleOnly(
     const thumbnailUrl = typeof data.thumbnail_url === "string" ? data.thumbnail_url : undefined;
     return {
       platform,
-      caption: caption ? toTitleFromText(caption) : undefined,
+      caption: caption ? truncateWords(caption) : undefined,
       thumbnailUrl,
       warning: "View count and publish date aren't available publicly for this platform — enter them manually.",
     };
