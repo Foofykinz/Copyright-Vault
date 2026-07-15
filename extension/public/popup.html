@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Viral DRM Collector</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        width: 360px;
+        max-height: 560px;
+        overflow-y: auto;
+        background: #0f1115;
+        color: #f3f4f6;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 12.5px;
+      }
+      header {
+        padding: 10px 12px;
+        border-bottom: 1px solid #303640;
+        font-weight: 600;
+      }
+      main {
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      label {
+        color: #9ca3af;
+        font-size: 11px;
+        font-weight: 500;
+      }
+      input,
+      select {
+        background: #181c22;
+        border: 1px solid #303640;
+        border-radius: 4px;
+        padding: 6px 8px;
+        color: #f3f4f6;
+        font-size: 12.5px;
+        width: 100%;
+      }
+      button {
+        background: #20252d;
+        border: 1px solid #303640;
+        border-radius: 4px;
+        padding: 6px 10px;
+        color: #f3f4f6;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: #454c58;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      button.primary {
+        background: #4d8dff;
+        border-color: #4d8dff;
+        color: #0b1220;
+        font-weight: 600;
+      }
+      .hint {
+        font-size: 11px;
+        color: #9ca3af;
+      }
+      .error {
+        font-size: 11px;
+        color: #e0554f;
+      }
+      .video-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-height: 220px;
+        overflow-y: auto;
+        border: 1px solid #303640;
+        border-radius: 4px;
+        padding: 6px;
+      }
+      .video-row {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        padding: 4px;
+        border-bottom: 1px solid #232833;
+      }
+      .video-row:last-child {
+        border-bottom: none;
+      }
+      .video-row .meta {
+        min-width: 0;
+      }
+      .video-row .caption {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .video-row .sub {
+        color: #9ca3af;
+        font-size: 10.5px;
+      }
+      details summary {
+        cursor: pointer;
+        color: #9ca3af;
+        font-size: 11px;
+      }
+      hr {
+        border: none;
+        border-top: 1px solid #303640;
+        margin: 2px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <header>Viral DRM Collector</header>
+    <main id="app"></main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

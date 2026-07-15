@@ -1,0 +1,17 @@
+{
+  "name": "viral-drm-extension",
+  "version": "0.1.0",
+  "description": "Browser extension that collects original client videos and sends them to Viral DRM.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.2.2",
+    "esbuild": "^0.28.1",
+    "typescript": "^7.0.2"
+  }
+}
