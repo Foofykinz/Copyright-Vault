@@ -2,6 +2,8 @@ export interface Env {
   DB: D1Database;
   /** Optional shared secret the future browser extension authenticates with. Unset in local dev. */
   EXTENSION_API_TOKEN?: string;
+  /** Optional YouTube Data API v3 key. Without it, YouTube metadata lookup is unavailable. */
+  YOUTUBE_API_KEY?: string;
 }
 
 /** Minimal per-request context passed to each API handler by the worker's manual router. */

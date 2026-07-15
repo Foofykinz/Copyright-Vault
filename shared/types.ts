@@ -166,3 +166,14 @@ export interface ApiError {
   error: string;
   details?: Record<string, string>;
 }
+
+/** Result of a best-effort metadata lookup for a pasted video URL. Any field may be missing. */
+export interface VideoMetadataResult {
+  platform: Platform;
+  caption?: string;
+  publicationDate?: string;
+  viewCount?: number;
+  thumbnailUrl?: string;
+  /** Set when a field could not be fetched (e.g. platform doesn't publicly expose it). */
+  warning?: string;
+}

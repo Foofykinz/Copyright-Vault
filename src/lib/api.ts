@@ -13,6 +13,7 @@ import type {
   UpdateCombinationFolderInput,
   UpdateSocialAccountInput,
   UpdateVideoInput,
+  VideoMetadataResult,
   VideoWithDeadline,
 } from "../../shared/types";
 
@@ -71,6 +72,9 @@ export const api = {
       post<{ video: VideoWithDeadline }>(`/social-accounts/${socialAccountId}/videos`, input),
     update: (id: string, input: UpdateVideoInput) => patch<{ video: VideoWithDeadline }>(`/videos/${id}`, input),
     remove: (id: string) => del(`/videos/${id}`),
+  },
+  metadata: {
+    lookup: (url: string) => request<{ metadata: VideoMetadataResult }>(`/metadata?url=${encodeURIComponent(url)}`),
   },
   combinationFolders: {
     listForClient: (clientId: string) =>

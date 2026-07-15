@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Modal } from "./Modal";
+import { api } from "../lib/api";
 import type { CreateVideoInput, SocialAccount } from "../../shared/types";
 import { PLATFORM_LABELS } from "../../shared/types";
 
@@ -9,6 +10,14 @@ interface ManualVideoEntryModalProps {
   onClose: () => void;
 }
 
+type MetadataState = "idle" | "loading" | "done" | "error";
+
+function splitIsoDateTime(iso: string): [string, string | null] {
+  const match = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}))?/.exec(iso);
+  if (!match) return [iso.slice(0, 10), null];
+  return [match[1], match[2] ?? null];
+}
+
 export function ManualVideoEntryModal({ socialAccount, onSave, onClose }: ManualVideoEntryModalProps) {
   const [videoUrl, setVideoUrl] = useState("");
   const [publicationDate, setPublicationDate] = useState("");
@@ -16,8 +25,41 @@ export function ManualVideoEntryModal({ socialAccount, onSave, onClose }: Manual
   const [caption, setCaption] = useState("");
   const [viewCount, setViewCount] = useState("0");
   const [notes, setNotes] = useState("");
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const [metadataState, setMetadataState] = useState<MetadataState>("idle");
+  const [metadataNote, setMetadataNote] = useState<string | null>(null);
+
+  const fetchMetadata = async () => {
+    const trimmed = videoUrl.trim();
+    if (!trimmed) return;
+    try {
+      new URL(trimmed);
+    } catch {
+      return;
+    }
+
+    setMetadataState("loading");
+    setMetadataNote(null);
+    try {
+      const { metadata } = await api.metadata.lookup(trimmed);
+      if (metadata.caption) setCaption(metadata.caption);
+      if (metadata.publicationDate) {
+        const [datePart, timePart] = splitIsoDateTime(metadata.publicationDate);
+        setPublicationDate(datePart);
+        if (timePart) setPublicationTime(timePart);
+      }
+      if (metadata.viewCount !== undefined) setViewCount(String(metadata.viewCount));
+      if (metadata.thumbnailUrl) setThumbnailUrl(metadata.thumbnailUrl);
+      setMetadataNote(metadata.warning ?? null);
+      setMetadataState("done");
+    } catch (err) {
+      setMetadataNote(err instanceof Error ? err.message : "Couldn't fetch details automatically. Enter them manually.");
+      setMetadataState("error");
+    }
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -40,6 +82,7 @@ export function ManualVideoEntryModal({ socialAccount, onSave, onClose }: Manual
         caption: caption.trim(),
         viewCount: viewCountNum,
         notes: notes.trim() || null,
+        thumbnailUrl,
       });
       onClose();
     } catch (err) {
@@ -59,7 +102,22 @@ export function ManualVideoEntryModal({ socialAccount, onSave, onClose }: Manual
         </div>
         <div className="field">
           <label htmlFor="video-url">Video URL</label>
-          <input id="video-url" type="url" placeholder="https://…" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} autoFocus />
+          <div className="flex-row">
+            <input
+              id="video-url"
+              type="url"
+              placeholder="https://…"
+              value={videoUrl}
+              onChange={(e) => setVideoUrl(e.target.value)}
+              onBlur={fetchMetadata}
+              autoFocus
+            />
+            <button type="button" className="btn btn-sm" onClick={fetchMetadata} disabled={metadataState === "loading"}>
+              {metadataState === "loading" ? "Fetching…" : "Fetch details"}
+            </button>
+          </div>
+          {metadataState === "loading" && <span className="hint">Fetching video details…</span>}
+          {metadataNote && metadataState !== "loading" && <span className="hint">{metadataNote}</span>}
         </div>
         <div className="field-row">
           <div className="field">

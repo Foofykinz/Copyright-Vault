@@ -13,6 +13,7 @@ import * as combinationFolderById from "../functions/api/combination-folders/byI
 import * as combinationFolderVideos from "../functions/api/combination-folders/byId/videos";
 import * as combinationFolderVideoById from "../functions/api/combination-folders/byId/videos/byVideoId";
 import * as extensionVideos from "../functions/api/extension/videos";
+import * as metadataLookup from "../functions/api/metadata/index";
 
 export interface Env extends ApiEnv {
   ASSETS: Fetcher;
@@ -46,6 +47,7 @@ register("/api/combination-folders/:id", combinationFolderById);
 register("/api/combination-folders/:id/videos", combinationFolderVideos);
 register("/api/combination-folders/:id/videos/:videoId", combinationFolderVideoById);
 register("/api/extension/videos", extensionVideos);
+register("/api/metadata", metadataLookup);
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
