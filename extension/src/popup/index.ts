@@ -19,6 +19,7 @@ interface State {
   tabPlatform: Platform | null;
   scannedVideos: Map<string, ScrapedVideo>;
   selectedKeys: Set<string>;
+  expandedKeys: Set<string>;
   status: string | null;
   error: string | null;
   showSettings: boolean;
@@ -35,6 +36,7 @@ const state: State = {
   tabPlatform: null,
   scannedVideos: new Map(),
   selectedKeys: new Set(),
+  expandedKeys: new Set(),
   status: null,
   error: null,
   showSettings: false,
@@ -278,12 +280,24 @@ function renderVideoRow(video: ScrapedVideo): HTMLElement {
     persistSession();
   });
 
+  const expanded = state.expandedKeys.has(video.key);
+  const caption = el("div", {
+    className: `caption${expanded ? " expanded" : ""}`,
+    textContent: video.caption || "(no caption)",
+    title: expanded ? "Click to collapse" : "Click to show full caption",
+  });
+  caption.addEventListener("click", () => {
+    if (state.expandedKeys.has(video.key)) state.expandedKeys.delete(video.key);
+    else state.expandedKeys.add(video.key);
+    render();
+  });
+
   const meta = el("div", { className: "meta" }, [
-    el("div", { className: "caption", textContent: video.caption || "(no caption)" }),
     el("div", {
       className: "sub",
       textContent: `${new Date(video.publicationDate).toLocaleDateString()} · ${video.viewCount !== null ? `${video.viewCount.toLocaleString()} views` : "views unknown"}`,
     }),
+    caption,
   ]);
 
   return el("div", { className: "video-row" }, [checkbox, meta]);

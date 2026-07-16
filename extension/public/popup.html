@@ -102,15 +102,22 @@
       }
       .video-row .meta {
         min-width: 0;
-      }
-      .video-row .caption {
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        width: 100%;
       }
       .video-row .sub {
         color: #9ca3af;
         font-size: 10.5px;
+        margin-bottom: 2px;
+      }
+      .video-row .caption {
+        cursor: pointer;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .video-row .caption.expanded {
+        white-space: normal;
+        word-break: break-word;
       }
       details summary {
         cursor: pointer;
