@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { VideoTableRow } from "./VideoTableRow";
 import { CombinationFolderAssignModal } from "./CombinationFolderAssignModal";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { StateBlock } from "./StateBlock";
+import { api } from "../lib/api";
 import { PLATFORM_LABELS, PLATFORMS, type DeadlineStatus, type Platform, type VideoWithDeadline } from "../../shared/types";
 
 interface VideoTableProps {
@@ -31,6 +33,7 @@ export function VideoTable({ videos, clientId, onChanged, removeFromFolderId, em
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [assigning, setAssigning] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const availableFolders = useMemo(() => {
     const map = new Map<string, { id: string; name: string; color: string }>();
@@ -143,6 +146,9 @@ export function VideoTable({ videos, clientId, onChanged, removeFromFolderId, em
             <button className="btn btn-primary btn-sm" onClick={() => setAssigning(true)}>
               Add to Combination Folder
             </button>
+            <button className="btn btn-danger btn-sm" onClick={() => setConfirmingDelete(true)}>
+              Delete selected
+            </button>
           </>
         )}
       </div>
@@ -207,6 +213,22 @@ export function VideoTable({ videos, clientId, onChanged, removeFromFolderId, em
             onChanged();
           }}
           onClose={() => setAssigning(false)}
+        />
+      )}
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title="Delete selected videos"
+          message={`This permanently deletes ${selection.size} video${selection.size === 1 ? "" : "s"} and removes ${selection.size === 1 ? "it" : "them"} from any Combination Folders. This cannot be undone.`}
+          confirmLabel="Delete"
+          danger
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={async () => {
+            await Promise.all([...selection].map((id) => api.videos.remove(id)));
+            setSelection(new Set());
+            setConfirmingDelete(false);
+            onChanged();
+          }}
         />
       )}
     </div>
