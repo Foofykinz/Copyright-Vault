@@ -67,6 +67,11 @@ function findPermalinkInTree(node: unknown, depth = 0): string | null {
   return null;
 }
 
+/** Whether a story has any attachment that looks like a video at all (vs. photo/text-only). */
+function hasVideoAttachment(story: FacebookStory): boolean {
+  return (story.attachments ?? []).some((a) => a.media?.__typename === "Video");
+}
+
 function findVideoPermalink(story: FacebookStory): string | null {
   for (const attachment of story.attachments ?? []) {
     // Skip attachments explicitly typed as something else (e.g. Photo); don't require an exact
@@ -80,15 +85,29 @@ function findVideoPermalink(story: FacebookStory): string | null {
 
 function scan(): ScanResult {
   const videos: ScrapedVideo[] = [];
+  const exclusionCounts = { share: 0, missingIds: 0, noVideoAttachment: 0, videoWithoutPermalink: 0 };
 
   for (const story of capturedStories.values()) {
     // attached_story is populated when this Story is a share/repost of someone else's post —
     // skip those so only original videos posted directly by the profile are included.
-    if (story.attached_story) continue;
-    if (!story.post_id || story.creation_time === undefined) continue;
+    if (story.attached_story) {
+      exclusionCounts.share += 1;
+      continue;
+    }
+    if (!story.post_id || story.creation_time === undefined) {
+      exclusionCounts.missingIds += 1;
+      continue;
+    }
+    if (!hasVideoAttachment(story)) {
+      exclusionCounts.noVideoAttachment += 1;
+      continue;
+    }
 
     const permalink = findVideoPermalink(story);
-    if (!permalink) continue;
+    if (!permalink) {
+      exclusionCounts.videoWithoutPermalink += 1;
+      continue;
+    }
 
     videos.push({
       key: `facebook:${story.post_id}`,
@@ -100,7 +119,7 @@ function scan(): ScanResult {
     });
   }
 
-  return { supported: true, profileHandle: null, videos, totalCandidates: capturedStories.size };
+  return { supported: true, profileHandle: null, videos, totalCandidates: capturedStories.size, exclusionCounts };
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

@@ -200,6 +200,7 @@ async function scanActiveTab(): Promise<void> {
   state.status = null;
   state.error = null;
   const tab = await activeTab();
+  state.tabPlatform = detectTabPlatform(tab?.url);
   if (!tab?.id) {
     state.error = "No active tab found.";
     render();
@@ -230,13 +231,26 @@ async function scanActiveTab(): Promise<void> {
     const hiddenByFilter = state.scannedVideos.size - visibleCount;
     const candidateNote =
       result.totalCandidates !== undefined ? ` (${result.totalCandidates} post${result.totalCandidates === 1 ? "" : "s"} seen on page)` : "";
+
+    const exclusionLabels: Record<string, string> = {
+      share: "shares/reposts",
+      missingIds: "missing post ID or date",
+      noVideoAttachment: "no video (photo/text post)",
+      videoWithoutPermalink: "had a video but no link could be found",
+    };
+    const exclusionParts = Object.entries(result.exclusionCounts ?? {})
+      .filter(([, count]) => count > 0)
+      .map(([reason, count]) => `${count} ${exclusionLabels[reason] ?? reason}`);
+    const exclusionNote = exclusionParts.length > 0 ? ` Excluded: ${exclusionParts.join(", ")}.` : "";
+
     state.status =
       `Scan found ${result.videos.length} video${result.videos.length === 1 ? "" : "s"}${candidateNote}` +
       (skippedDuplicates > 0 ? `, ${skippedDuplicates} already imported (skipped)` : "") +
       `. ${added} new this scan; ${visibleCount} shown under the current date filter.` +
       (hiddenByFilter > 0
         ? ` ${hiddenByFilter} captured video${hiddenByFilter === 1 ? " is" : "s are"} hidden by the date filter — switch to Custom date range to see ${hiddenByFilter === 1 ? "it" : "them"}.`
-        : " Scroll down and scan again for more.");
+        : " Scroll down and scan again for more.") +
+      exclusionNote;
   } catch {
     state.error = "Open a TikTok profile, an X profile/timeline, or a Facebook page/profile, then try scanning again.";
   }
