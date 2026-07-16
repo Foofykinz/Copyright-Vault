@@ -8,15 +8,7 @@ interface FacebookStory {
   attached_story?: unknown;
   attachments?: Array<{
     media?: { __typename?: string };
-    styles?: {
-      attachment?: {
-        media?: {
-          __typename?: string;
-          permalink_url?: string;
-          first_frame_thumbnail?: string;
-        };
-      };
-    };
+    styles?: unknown;
   }>;
   comet_sections?: {
     content?: {
@@ -52,10 +44,35 @@ function extractCaption(story: FacebookStory): string {
   return typeof text === "string" ? text : "";
 }
 
+/**
+ * Facebook wraps a video attachment's real data differently depending on presentation — the
+ * captured example (a /reel/ post) nested it under styles.attachment.media, but regular /videos/
+ * posts and Live videos very likely use a different renderer/wrapper shape. Rather than assume
+ * one fixed path (which is what silently dropped non-Reel videos), this walks the whole styles
+ * subtree looking for any node that's actually a Video with a permalink_url — the field name
+ * Facebook uses consistently wherever a full Video node appears, regardless of the wrapper style.
+ */
+function findPermalinkInTree(node: unknown, depth = 0): string | null {
+  if (!node || typeof node !== "object" || depth > 8) return null;
+  const obj = node as Record<string, unknown>;
+  if (obj.__typename === "Video" && typeof obj.permalink_url === "string") {
+    return obj.permalink_url;
+  }
+  for (const value of Object.values(obj)) {
+    if (value && typeof value === "object") {
+      const found = findPermalinkInTree(value, depth + 1);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 function findVideoPermalink(story: FacebookStory): string | null {
   for (const attachment of story.attachments ?? []) {
-    if (attachment.media?.__typename !== "Video") continue;
-    const permalink = attachment.styles?.attachment?.media?.permalink_url;
+    // Skip attachments explicitly typed as something else (e.g. Photo); don't require an exact
+    // "Video" match up front since the outer media stub isn't always populated the same way.
+    if (attachment.media?.__typename && attachment.media.__typename !== "Video") continue;
+    const permalink = findPermalinkInTree(attachment.styles) ?? findPermalinkInTree(attachment.media);
     if (permalink) return permalink;
   }
   return null;
