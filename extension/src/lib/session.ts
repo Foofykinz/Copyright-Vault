@@ -1,5 +1,7 @@
 import type { ScrapedVideo } from "./scraped";
 
+export type DateMode = "sincePull" | "range";
+
 /**
  * Belt-and-suspenders persistence for in-progress selections/scan results, using
  * chrome.storage.session (cleared when the browser closes, kept otherwise). The side panel
@@ -11,6 +13,9 @@ export interface SessionState {
   selectedSocialAccountId: string;
   scannedVideos: ScrapedVideo[];
   selectedKeys: string[];
+  dateMode: DateMode;
+  rangeStart: string;
+  rangeEnd: string;
 }
 
 const STORAGE_KEY = "viralDrmSession";
@@ -19,11 +24,14 @@ const EMPTY_SESSION: SessionState = {
   selectedSocialAccountId: "",
   scannedVideos: [],
   selectedKeys: [],
+  dateMode: "sincePull",
+  rangeStart: "",
+  rangeEnd: "",
 };
 
 export async function getSession(): Promise<SessionState> {
   const result = await chrome.storage.session.get(STORAGE_KEY);
-  return (result[STORAGE_KEY] as SessionState | undefined) ?? EMPTY_SESSION;
+  return { ...EMPTY_SESSION, ...(result[STORAGE_KEY] as Partial<SessionState> | undefined) };
 }
 
 export async function updateSession(patch: Partial<SessionState>): Promise<void> {

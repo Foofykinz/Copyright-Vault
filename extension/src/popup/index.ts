@@ -1,5 +1,5 @@
 import { getConfig, updateConfig } from "../lib/storage";
-import { getSession, updateSession } from "../lib/session";
+import { getSession, updateSession, type DateMode } from "../lib/session";
 import { extensionApi } from "../lib/api";
 import { SCAN_MESSAGE, type ScanResult, type ScrapedVideo } from "../lib/scraped";
 import type { Client, ExtensionVideoImportInput, Platform, SocialAccount } from "../../../shared/types";
@@ -20,6 +20,10 @@ interface State {
   scannedVideos: Map<string, ScrapedVideo>;
   selectedKeys: Set<string>;
   expandedKeys: Set<string>;
+  existingVideoUrls: Set<string>;
+  dateMode: DateMode;
+  rangeStart: string;
+  rangeEnd: string;
   status: string | null;
   error: string | null;
   showSettings: boolean;
@@ -37,6 +41,10 @@ const state: State = {
   scannedVideos: new Map(),
   selectedKeys: new Set(),
   expandedKeys: new Set(),
+  existingVideoUrls: new Set(),
+  dateMode: "sincePull",
+  rangeStart: "",
+  rangeEnd: "",
   status: null,
   error: null,
   showSettings: false,
@@ -60,6 +68,38 @@ async function activeTab(): Promise<chrome.tabs.Tab | undefined> {
   return tab;
 }
 
+function isWithinDateFilter(video: ScrapedVideo): boolean {
+  if (state.dateMode === "range") {
+    if (!state.rangeStart || !state.rangeEnd) return true; // incomplete range: don't hide anything yet
+    const day = video.publicationDate.slice(0, 10);
+    return day >= state.rangeStart && day <= state.rangeEnd;
+  }
+  const account = state.socialAccounts.find((a) => a.id === state.selectedSocialAccountId);
+  if (!account?.lastPullAt) return true;
+  return video.publicationDate > account.lastPullAt;
+}
+
+function visibleVideos(): ScrapedVideo[] {
+  return [...state.scannedVideos.values()].filter(isWithinDateFilter).sort((a, b) => b.publicationDate.localeCompare(a.publicationDate));
+}
+
+async function loadExistingVideoUrls(): Promise<void> {
+  if (!state.selectedSocialAccountId) {
+    state.existingVideoUrls = new Set();
+    return;
+  }
+  try {
+    const { videos } = await extensionApi.listVideosForAccount(
+      { apiBaseUrl: state.apiBaseUrl, apiToken: state.apiToken },
+      state.selectedSocialAccountId
+    );
+    state.existingVideoUrls = new Set(videos.map((v) => v.videoUrl));
+  } catch {
+    // Non-fatal — dedup still gets enforced server-side on send either way.
+    state.existingVideoUrls = new Set();
+  }
+}
+
 async function loadSocialAccounts(): Promise<void> {
   try {
     const { socialAccounts } = await extensionApi.listSocialAccounts(
@@ -72,6 +112,7 @@ async function loadSocialAccounts(): Promise<void> {
       const matching = state.tabPlatform ? socialAccounts.find((a) => a.platform === state.tabPlatform) : undefined;
       state.selectedSocialAccountId = matching?.id ?? socialAccounts[0]?.id ?? "";
     }
+    await loadExistingVideoUrls();
   } catch (err) {
     state.error = err instanceof Error ? err.message : "Couldn't load social accounts.";
   }
@@ -96,6 +137,9 @@ function persistSession(): void {
     selectedSocialAccountId: state.selectedSocialAccountId,
     scannedVideos: [...state.scannedVideos.values()],
     selectedKeys: [...state.selectedKeys],
+    dateMode: state.dateMode,
+    rangeStart: state.rangeStart,
+    rangeEnd: state.rangeEnd,
   });
 }
 
@@ -108,6 +152,9 @@ async function init(): Promise<void> {
   state.selectedSocialAccountId = session.selectedSocialAccountId || config.lastSocialAccountId || "";
   state.scannedVideos = new Map(session.scannedVideos.map((v) => [v.key, v]));
   state.selectedKeys = new Set(session.selectedKeys);
+  state.dateMode = session.dateMode;
+  state.rangeStart = session.rangeStart;
+  state.rangeEnd = session.rangeEnd;
 
   const tab = await activeTab();
   state.tabPlatform = detectTabPlatform(tab?.url);
@@ -164,12 +211,25 @@ async function scanActiveTab(): Promise<void> {
       render();
       return;
     }
+
+    let added = 0;
+    let skippedDuplicates = 0;
     for (const video of result.videos) {
+      if (state.existingVideoUrls.has(video.videoUrl)) {
+        skippedDuplicates += 1;
+        continue;
+      }
+      if (!state.scannedVideos.has(video.key)) added += 1;
       state.scannedVideos.set(video.key, video);
       state.selectedKeys.add(video.key);
     }
     persistSession();
-    state.status = `Found ${result.videos.length} video${result.videos.length === 1 ? "" : "s"} on this scan (${state.scannedVideos.size} total so far). Scroll down and scan again to pick up more.`;
+
+    const visibleCount = visibleVideos().length;
+    state.status =
+      `Scan found ${result.videos.length} video${result.videos.length === 1 ? "" : "s"} on the page` +
+      (skippedDuplicates > 0 ? `, ${skippedDuplicates} already imported (skipped)` : "") +
+      `. ${added} new this scan; ${visibleCount} shown under the current date filter. Scroll down and scan again for more.`;
   } catch {
     state.error = "Open a TikTok profile (tiktok.com/@handle) or an X profile/timeline page, then try scanning again.";
   }
@@ -184,7 +244,7 @@ async function sendSelected(): Promise<void> {
     return;
   }
 
-  const toSend = [...state.scannedVideos.values()].filter((v) => state.selectedKeys.has(v.key));
+  const toSend = visibleVideos().filter((v) => state.selectedKeys.has(v.key));
   if (toSend.length === 0) {
     state.error = "Select at least one video to send.";
     render();
@@ -196,6 +256,7 @@ async function sendSelected(): Promise<void> {
   render();
 
   let succeeded = 0;
+  let duplicates = 0;
   let failed = 0;
 
   for (const video of toSend) {
@@ -209,13 +270,20 @@ async function sendSelected(): Promise<void> {
       viewCount: video.viewCount ?? undefined,
     };
     try {
-      await extensionApi.importVideo({ apiBaseUrl: state.apiBaseUrl, apiToken: state.apiToken }, input);
+      const result = await extensionApi.importVideo({ apiBaseUrl: state.apiBaseUrl, apiToken: state.apiToken }, input);
       state.scannedVideos.delete(video.key);
       state.selectedKeys.delete(video.key);
-      succeeded += 1;
+      state.existingVideoUrls.add(video.videoUrl);
+      if (result.duplicate) duplicates += 1;
+      else succeeded += 1;
     } catch {
       failed += 1;
     }
+  }
+
+  if (succeeded + duplicates > 0) {
+    const idx = state.socialAccounts.findIndex((a) => a.id === account.id);
+    if (idx >= 0) state.socialAccounts[idx] = { ...state.socialAccounts[idx], lastPullAt: new Date().toISOString() };
   }
 
   await updateConfig({ lastClientId: state.selectedClientId, lastSocialAccountId: state.selectedSocialAccountId });
@@ -223,8 +291,9 @@ async function sendSelected(): Promise<void> {
 
   state.busy = false;
   state.status =
-    `Sent ${succeeded} of ${toSend.length} video${toSend.length === 1 ? "" : "s"}.` +
-    (failed > 0 ? ` ${failed} failed — still listed below, safe to retry.` : "");
+    `Sent ${succeeded} new video${succeeded === 1 ? "" : "s"}` +
+    (duplicates > 0 ? `, ${duplicates} already imported (skipped)` : "") +
+    (failed > 0 ? `. ${failed} failed — still listed below, safe to retry.` : ".");
   render();
 }
 
@@ -303,6 +372,52 @@ function renderVideoRow(video: ScrapedVideo): HTMLElement {
   return el("div", { className: "video-row" }, [checkbox, meta]);
 }
 
+function renderDateFilterField(): HTMLElement {
+  const account = state.socialAccounts.find((a) => a.id === state.selectedSocialAccountId);
+
+  const modeSelect = el("select", { id: "date-mode-select" }, [
+    el("option", { value: "sincePull", textContent: "Since last pull", selected: state.dateMode === "sincePull" }),
+    el("option", { value: "range", textContent: "Custom date range", selected: state.dateMode === "range" }),
+  ]);
+  modeSelect.addEventListener("change", () => {
+    state.dateMode = modeSelect.value as DateMode;
+    persistSession();
+    render();
+  });
+
+  const children: (Node | string)[] = [el("label", { textContent: "Pull videos published…" }), modeSelect];
+
+  if (state.dateMode === "sincePull") {
+    children.push(
+      el("div", {
+        className: "hint",
+        textContent: account?.lastPullAt
+          ? `Since ${new Date(account.lastPullAt).toLocaleString()}`
+          : "This account has never been pulled — everything scanned will be included.",
+      })
+    );
+  } else {
+    const startInput = el("input", { type: "date", value: state.rangeStart });
+    startInput.addEventListener("change", () => {
+      state.rangeStart = startInput.value;
+      persistSession();
+      render();
+    });
+    const endInput = el("input", { type: "date", value: state.rangeEnd });
+    endInput.addEventListener("change", () => {
+      state.rangeEnd = endInput.value;
+      persistSession();
+      render();
+    });
+    children.push(el("div", { className: "field-row-inline" }, [startInput, endInput]));
+    if (!state.rangeStart || !state.rangeEnd) {
+      children.push(el("div", { className: "hint", textContent: "Set both dates to filter — until then, nothing is hidden." }));
+    }
+  }
+
+  return el("div", { className: "field" }, children);
+}
+
 function renderMainView(): HTMLElement {
   const container = el("div");
 
@@ -356,6 +471,10 @@ function renderMainView(): HTMLElement {
   accountSelect.addEventListener("change", () => {
     state.selectedSocialAccountId = accountSelect.value;
     persistSession();
+    void loadExistingVideoUrls().then(() => {
+      persistSession();
+      render();
+    });
   });
   if (accountsToShow.length > 0 && !accountsToShow.some((a) => a.id === state.selectedSocialAccountId)) {
     state.selectedSocialAccountId = accountsToShow[0].id;
@@ -364,17 +483,26 @@ function renderMainView(): HTMLElement {
   const scanBtn = el("button", { textContent: "Scan this page" });
   scanBtn.addEventListener("click", () => void scanActiveTab());
 
-  const videos = [...state.scannedVideos.values()];
+  const visible = visibleVideos();
+  const totalCaptured = state.scannedVideos.size;
   const videoList = el(
     "div",
     { className: "video-list" },
-    videos.length > 0 ? videos.map(renderVideoRow) : [el("div", { className: "hint", textContent: "No videos scanned yet." })]
+    visible.length > 0
+      ? visible.map(renderVideoRow)
+      : [
+          el("div", {
+            className: "hint",
+            textContent: totalCaptured > 0 ? "No scanned videos match the current date filter." : "No videos scanned yet.",
+          }),
+        ]
   );
 
+  const sendableCount = visible.filter((v) => state.selectedKeys.has(v.key)).length;
   const sendBtn = el("button", {
     className: "primary",
-    textContent: state.busy ? "Sending…" : `Send ${state.selectedKeys.size} selected`,
-    disabled: state.busy || state.selectedKeys.size === 0 || !state.selectedSocialAccountId,
+    textContent: state.busy ? "Sending…" : `Send ${sendableCount} selected`,
+    disabled: state.busy || sendableCount === 0 || !state.selectedSocialAccountId,
   });
   sendBtn.addEventListener("click", () => void sendSelected());
 
@@ -384,7 +512,7 @@ function renderMainView(): HTMLElement {
     render();
   });
 
-  container.append(clientField, accountField, el("hr"), scanBtn, videoList, sendBtn);
+  container.append(clientField, accountField, renderDateFilterField(), el("hr"), scanBtn, videoList, sendBtn);
 
   if (state.status) container.appendChild(el("div", { className: "hint", textContent: state.status }));
   if (state.error) container.appendChild(el("div", { className: "error", textContent: state.error }));

@@ -23,6 +23,14 @@ the piece the web app's "Pull recent videos" button was waiting on.
   up more from a long profile — results accumulate until you send them.
 - The UI is a **side panel**, not a popup — it stays open and docked while you scroll and interact
   with the page, and your selections/scan results survive if it does get closed.
+- **Deduplication is enforced server-side** (by social account + video URL), not just in the
+  extension's UI — the same video can never be inserted twice no matter how many times it's
+  scanned or sent, even across different sessions or people. The extension also pre-filters
+  already-imported videos out of the review list so you're not re-reviewing things you already have.
+- **Date filtering**: choose "Since last pull" (only videos published after that account's last
+  successful send) or a custom date range (e.g. `06/01/2026`–`06/30/2026` to backfill a specific
+  month). This only changes what's shown/sendable from what's already been scanned — it doesn't
+  change what the scan itself picks up off the page.
 
 ## Setup
 
@@ -58,10 +66,14 @@ the piece the web app's "Pull recent videos" button was waiting on.
 2. Click the extension icon to open the side panel (or it may already be open from before — it
    stays docked across page navigation). Pick the Client and Social Account (auto-filtered to the
    matching platform when possible).
-3. Click "Scan this page". Review the videos found — uncheck anything that shouldn't be sent.
-4. Click "Send N selected". Sent videos disappear from the list; anything that failed stays so you
+3. Pick a date mode — "Since last pull" for routine incremental pulls, or "Custom date range" to
+   backfill a specific window (e.g. all of June: `2026-06-01` to `2026-06-30`).
+4. Click "Scan this page". Review the videos found — uncheck anything that shouldn't be sent.
+   Already-imported videos are automatically excluded; videos outside the current date filter are
+   captured but hidden until the filter covers them.
+5. Click "Send N selected". Sent videos disappear from the list; anything that failed stays so you
    can retry.
-5. On TikTok, scroll down to load more videos and scan again before sending if you want the whole
+6. On TikTok, scroll down to load more videos and scan again before sending if you want the whole
    history in one pass. The side panel stays open while you scroll, unlike a popup would.
 
 ## Rebuilding after changes

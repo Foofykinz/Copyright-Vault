@@ -162,6 +162,13 @@ export interface ExtensionVideoImportInput {
   viewCountCheckedAt?: string;
 }
 
+/** Response for POST /api/extension/videos. `duplicate` is true when videoUrl already existed for
+ * that social account — the existing row is returned as-is rather than creating a new one. */
+export interface ExtensionVideoImportResult {
+  video: VideoWithDeadline;
+  duplicate: boolean;
+}
+
 export interface ApiError {
   error: string;
   details?: Record<string, string>;

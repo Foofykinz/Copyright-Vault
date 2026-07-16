@@ -12,7 +12,7 @@ import {
   requireUrl,
 } from "../../lib/validation";
 import { computeDeadline } from "../../../shared/dates";
-import type { ExtensionVideoImportInput, VideoWithDeadline } from "../../../shared/types";
+import type { ExtensionVideoImportInput, ExtensionVideoImportResult } from "../../../shared/types";
 
 /**
  * Import endpoint for the future browser extension. Not yet called by anything —
@@ -38,8 +38,11 @@ import type { ExtensionVideoImportInput, VideoWithDeadline } from "../../../shar
  *   "viewCountCheckedAt": "2026-07-15T09:00:00Z"
  * }
  *
- * Response 201:
- * { "video": { ...VideoWithDeadline } }
+ * Response 201 (new video created):
+ * { "video": { ...VideoWithDeadline }, "duplicate": false }
+ *
+ * Response 200 (videoUrl already existed for this social account — no new row created):
+ * { "video": { ...VideoWithDeadline }, "duplicate": true }
  */
 export const onRequestPost: ApiHandler = async (context) => {
   try {
@@ -63,8 +66,29 @@ export const onRequestPost: ApiHandler = async (context) => {
     }
 
     const db = context.env.DB;
-    const id = generateId();
     const now = nowIso();
+
+    // Dedup by (social_account_id, video_url) so a video already imported for this account is
+    // never inserted twice, however many times it's scanned/sent. The pull still counts as
+    // successful, so last_pull_at is updated either way.
+    const existingRow = await db
+      .prepare("SELECT * FROM videos WHERE social_account_id = ? AND video_url = ?")
+      .bind(socialAccountId, videoUrl)
+      .first();
+
+    await db.prepare("UPDATE social_accounts SET last_pull_at = ?, updated_at = ? WHERE id = ?").bind(now, now, socialAccountId).run();
+
+    if (existingRow) {
+      const existingVideo = mapVideo(existingRow as never);
+      const deadline = computeDeadline(existingVideo.publicationDate);
+      const result: ExtensionVideoImportResult = {
+        video: { ...existingVideo, registrationDeadline: deadline.registrationDeadline, daysRemaining: deadline.daysRemaining, deadlineStatus: deadline.status, folders: [] },
+        duplicate: true,
+      };
+      return json(result, { status: 200 });
+    }
+
+    const id = generateId();
 
     await db
       .prepare(
@@ -89,33 +113,34 @@ export const onRequestPost: ApiHandler = async (context) => {
       )
       .run();
 
-    await db.prepare("UPDATE social_accounts SET last_pull_at = ?, updated_at = ? WHERE id = ?").bind(now, now, socialAccountId).run();
-
     const deadline = computeDeadline(publicationDate);
-    const video: VideoWithDeadline = {
-      ...mapVideo({
-        id,
-        client_id: clientId,
-        social_account_id: socialAccountId,
-        platform,
-        video_url: videoUrl,
-        publication_date: publicationDate,
-        caption,
-        view_count: viewCount,
-        view_count_checked_at: viewCountCheckedAt,
-        thumbnail_url: null,
-        notes: null,
-        collected_at: now,
-        created_at: now,
-        updated_at: now,
-      }),
-      registrationDeadline: deadline.registrationDeadline,
-      daysRemaining: deadline.daysRemaining,
-      deadlineStatus: deadline.status,
-      folders: [],
+    const result: ExtensionVideoImportResult = {
+      video: {
+        ...mapVideo({
+          id,
+          client_id: clientId,
+          social_account_id: socialAccountId,
+          platform,
+          video_url: videoUrl,
+          publication_date: publicationDate,
+          caption,
+          view_count: viewCount,
+          view_count_checked_at: viewCountCheckedAt,
+          thumbnail_url: null,
+          notes: null,
+          collected_at: now,
+          created_at: now,
+          updated_at: now,
+        }),
+        registrationDeadline: deadline.registrationDeadline,
+        daysRemaining: deadline.daysRemaining,
+        deadlineStatus: deadline.status,
+        folders: [],
+      },
+      duplicate: false,
     };
 
-    return json({ video }, { status: 201 });
+    return json(result, { status: 201 });
   } catch (err) {
     return errorResponse(err);
   }
