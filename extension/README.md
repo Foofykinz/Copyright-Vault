@@ -1,7 +1,7 @@
 # Viral DRM Collector (browser extension)
 
-Collects a client's own videos from TikTok and X and sends them to the Viral DRM web app. This is
-the piece the web app's "Pull recent videos" button was waiting on.
+Collects a client's own videos from TikTok, X, and Facebook and sends them to the Viral DRM web
+app. This is the piece the web app's "Pull recent videos" button was waiting on.
 
 ## What it does and doesn't do
 
@@ -14,9 +14,16 @@ the piece the web app's "Pull recent videos" button was waiting on.
 - **X**: reads whatever tweets are currently rendered on a profile/timeline page. Skips reposts and
   quote-tweet embeds, and only keeps tweets that contain a video. Caption and date are reliable;
   view count is best-effort (X doesn't always expose it in a stable way).
-- **Instagram / Facebook**: not implemented yet — both platforms' web apps are the most obfuscated
-  and change the most often, so a scraper for them needs more dedicated upkeep than the other two.
-  Keep using manual entry for these until a later pass adds them.
+- **Facebook**: intercepts the GraphQL response Facebook's page uses to render a profile/Page
+  timeline (`timeline_list_feed_units`), same technique as TikTok. Gives real caption and publish
+  date. View count isn't in this response at all (not a bug — Facebook's feed query just doesn't
+  carry it), so it stays manual, same as X. Shares/reposts are excluded automatically via
+  Facebook's own `attached_story` field, which is only populated when a Story wraps someone else's
+  post rather than being an original one. **Refresh the Facebook tab after installing/updating the
+  extension**, same reason as TikTok — the interceptor only sees requests made after it loads.
+- **Instagram**: not implemented yet — Meta's Instagram web app is the most obfuscated and
+  frequently-changed of the four, so it needs its own dedicated diagnostic pass rather than being
+  bolted on here. Keep using manual entry for it until a later pass adds it.
 - Nothing is sent automatically. Every scan populates a review list with checkboxes — you pick
   what actually gets sent.
 - X only renders tweets currently scrolled into view, so scan, scroll down, and scan again to pick
@@ -62,7 +69,8 @@ the piece the web app's "Pull recent videos" button was waiting on.
 
 ## Using it
 
-1. Open a client's TikTok profile (`tiktok.com/@handle`) or X profile (`x.com/handle`).
+1. Open a client's TikTok profile (`tiktok.com/@handle`), X profile (`x.com/handle`), or Facebook
+   page/profile.
 2. Click the extension icon to open the side panel (or it may already be open from before — it
    stays docked across page navigation). Pick the Client and Social Account (auto-filtered to the
    matching platform when possible).
@@ -73,8 +81,9 @@ the piece the web app's "Pull recent videos" button was waiting on.
    captured but hidden until the filter covers them.
 5. Click "Send N selected". Sent videos disappear from the list; anything that failed stays so you
    can retry.
-6. On TikTok, scroll down to load more videos and scan again before sending if you want the whole
-   history in one pass. The side panel stays open while you scroll, unlike a popup would.
+6. On TikTok and Facebook, scroll down to load more videos and scan again before sending if you
+   want the whole history in one pass. The side panel stays open while you scroll, unlike a popup
+   would.
 
 ## Rebuilding after changes
 
@@ -85,9 +94,10 @@ npm run watch     # rebuild on save; reload the unpacked extension in the browse
 
 ## Known fragility
 
-TikTok's and X's page structure (and TikTok's internal API response shape) isn't public and isn't
-stable — both companies can and do change it without notice, which will break the corresponding
-content script. If a scan stops finding videos, that's the most likely reason; the parsing logic in
+None of these platforms' page structures or internal API response shapes are public or stable —
+TikTok, X, and Meta can all change them without notice, which will break the corresponding content
+script. If a scan stops finding videos, that's the most likely reason; the parsing logic in
 `src/content/tiktok-network.ts` (TikTok's `/api/post/item_list` response shape),
-`src/content/tiktok.ts`, and `src/content/x.ts` will need updating to match whatever the
-platform looks like at that point.
+`src/content/tiktok.ts`, `src/content/x.ts`, `src/content/facebook-network.ts` (Facebook's
+`timeline_list_feed_units` response shape), and `src/content/facebook.ts` will need updating to
+match whatever the platform looks like at that point.

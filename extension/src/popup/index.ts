@@ -57,6 +57,7 @@ function detectTabPlatform(url: string | undefined): Platform | null {
     const host = new URL(url).hostname.replace(/^www\./, "");
     if (host === "tiktok.com") return "tiktok";
     if (host === "x.com" || host === "twitter.com") return "x";
+    if (host === "facebook.com") return "facebook";
   } catch {
     return null;
   }
@@ -231,7 +232,7 @@ async function scanActiveTab(): Promise<void> {
       (skippedDuplicates > 0 ? `, ${skippedDuplicates} already imported (skipped)` : "") +
       `. ${added} new this scan; ${visibleCount} shown under the current date filter. Scroll down and scan again for more.`;
   } catch {
-    state.error = "Open a TikTok profile (tiktok.com/@handle) or an X profile/timeline page, then try scanning again.";
+    state.error = "Open a TikTok profile, an X profile/timeline, or a Facebook page/profile, then try scanning again.";
   }
   render();
 }
@@ -421,11 +422,11 @@ function renderDateFilterField(): HTMLElement {
 function renderMainView(): HTMLElement {
   const container = el("div");
 
-  if (state.tabPlatform === "tiktok" || state.tabPlatform === "x") {
+  if (state.tabPlatform === "tiktok" || state.tabPlatform === "x" || state.tabPlatform === "facebook") {
     container.appendChild(el("div", { className: "hint", textContent: `Detected platform: ${PLATFORM_LABELS[state.tabPlatform]}` }));
   } else {
     container.appendChild(
-      el("div", { className: "hint", textContent: "Navigate to a TikTok or X profile to scan for videos." })
+      el("div", { className: "hint", textContent: "Navigate to a TikTok, X, or Facebook profile to scan for videos." })
     );
   }
 
