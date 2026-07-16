@@ -1,5 +1,6 @@
 import { Route, Routes } from "react-router-dom";
 import { Sidebar } from "./components/Sidebar";
+import { ExtensionInstallBanner } from "./components/ExtensionInstallBanner";
 import { HomePage } from "./pages/HomePage";
 import { ClientPage } from "./pages/ClientPage";
 import { SocialAccountPage } from "./pages/SocialAccountPage";
@@ -11,6 +12,7 @@ export default function App() {
     <div className="app-shell">
       <Sidebar />
       <div className="main">
+        <ExtensionInstallBanner />
         <div className="main-scroll">
           <Routes>
             <Route path="/" element={<HomePage />} />
