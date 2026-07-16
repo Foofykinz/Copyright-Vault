@@ -17,6 +17,8 @@ interface State {
   selectedClientId: string;
   selectedSocialAccountId: string;
   tabPlatform: Platform | null;
+  tabUrl: string | null;
+  mismatchAcknowledged: boolean;
   scannedVideos: Map<string, ScrapedVideo>;
   selectedKeys: Set<string>;
   expandedKeys: Set<string>;
@@ -38,6 +40,8 @@ const state: State = {
   selectedClientId: "",
   selectedSocialAccountId: "",
   tabPlatform: null,
+  tabUrl: null,
+  mismatchAcknowledged: false,
   scannedVideos: new Map(),
   selectedKeys: new Set(),
   expandedKeys: new Set(),
@@ -62,6 +66,29 @@ function detectTabPlatform(url: string | undefined): Platform | null {
     return null;
   }
   return null;
+}
+
+/** Normalizes a profile-ish URL to "host/first-path-segment" (lowercase) so two URLs pointing at
+ * the same profile can be compared even if they differ in scheme, trailing slashes, or subpages
+ * (e.g. facebook.com/reedtimmerwx vs facebook.com/reedtimmerwx/videos). */
+function profileKey(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, "").toLowerCase();
+    const firstSegment = parsed.pathname.split("/").filter(Boolean)[0];
+    return firstSegment ? `${host}/${firstSegment.toLowerCase()}` : host;
+  } catch {
+    return null;
+  }
+}
+
+/** True only when both URLs resolve to a comparable key and those keys actually differ — i.e. we
+ * have enough information to say "this looks wrong", not just "we couldn't tell". */
+function profileLooksMismatched(accountProfileUrl: string | null, tabUrl: string | null): boolean {
+  const accountKey = profileKey(accountProfileUrl);
+  const tabKey = profileKey(tabUrl);
+  return accountKey !== null && tabKey !== null && accountKey !== tabKey;
 }
 
 async function activeTab(): Promise<chrome.tabs.Tab | undefined> {
@@ -159,6 +186,7 @@ async function init(): Promise<void> {
 
   const tab = await activeTab();
   state.tabPlatform = detectTabPlatform(tab?.url);
+  state.tabUrl = tab?.url ?? null;
 
   if (!state.apiBaseUrl || !state.apiToken) {
     state.showSettings = true;
@@ -201,6 +229,8 @@ async function scanActiveTab(): Promise<void> {
   state.error = null;
   const tab = await activeTab();
   state.tabPlatform = detectTabPlatform(tab?.url);
+  if (tab?.url !== state.tabUrl) state.mismatchAcknowledged = false;
+  state.tabUrl = tab?.url ?? null;
   if (!tab?.id) {
     state.error = "No active tab found.";
     render();
@@ -261,6 +291,12 @@ async function sendSelected(): Promise<void> {
   const account = state.socialAccounts.find((a) => a.id === state.selectedSocialAccountId);
   if (!account) {
     state.error = "Choose a social account first.";
+    render();
+    return;
+  }
+
+  if (profileLooksMismatched(account.profileUrl, state.tabUrl) && !state.mismatchAcknowledged) {
+    state.error = "This page doesn't look like it matches the selected social account. Check the box above to confirm before sending.";
     render();
     return;
   }
@@ -462,6 +498,7 @@ function renderMainView(): HTMLElement {
   clientSelect.addEventListener("change", () => {
     state.selectedClientId = clientSelect.value;
     state.selectedSocialAccountId = "";
+    state.mismatchAcknowledged = false;
     persistSession();
     void loadSocialAccounts().then(() => {
       persistSession();
@@ -491,6 +528,7 @@ function renderMainView(): HTMLElement {
   const accountSelect = accountField.querySelector("select") as HTMLSelectElement;
   accountSelect.addEventListener("change", () => {
     state.selectedSocialAccountId = accountSelect.value;
+    state.mismatchAcknowledged = false;
     persistSession();
     void loadExistingVideoUrls().then(() => {
       persistSession();
@@ -500,6 +538,22 @@ function renderMainView(): HTMLElement {
   if (accountsToShow.length > 0 && !accountsToShow.some((a) => a.id === state.selectedSocialAccountId)) {
     state.selectedSocialAccountId = accountsToShow[0].id;
   }
+
+  const selectedAccount = state.socialAccounts.find((a) => a.id === state.selectedSocialAccountId) ?? null;
+  const mismatchWarning =
+    selectedAccount && profileLooksMismatched(selectedAccount.profileUrl, state.tabUrl)
+      ? (() => {
+          const checkbox = el("input", { type: "checkbox", checked: state.mismatchAcknowledged });
+          checkbox.addEventListener("change", () => {
+            state.mismatchAcknowledged = checkbox.checked;
+          });
+          const label = el("label", { className: "flex-row" }, [
+            checkbox,
+            ` This page doesn't look like it matches ${selectedAccount.accountName}'s profile URL — confirm this is the right account before sending.`,
+          ]);
+          return el("div", { className: "error" }, [label]);
+        })()
+      : null;
 
   const scanBtn = el("button", { textContent: "Scan this page" });
   scanBtn.addEventListener("click", () => void scanActiveTab());
@@ -520,10 +574,11 @@ function renderMainView(): HTMLElement {
   );
 
   const sendableCount = visible.filter((v) => state.selectedKeys.has(v.key)).length;
+  const blockedByMismatch = mismatchWarning !== null && !state.mismatchAcknowledged;
   const sendBtn = el("button", {
     className: "primary",
     textContent: state.busy ? "Sending…" : `Send ${sendableCount} selected`,
-    disabled: state.busy || sendableCount === 0 || !state.selectedSocialAccountId,
+    disabled: state.busy || sendableCount === 0 || !state.selectedSocialAccountId || blockedByMismatch,
   });
   sendBtn.addEventListener("click", () => void sendSelected());
 
@@ -533,7 +588,9 @@ function renderMainView(): HTMLElement {
     render();
   });
 
-  container.append(clientField, accountField, renderDateFilterField(), el("hr"), scanBtn, videoList, sendBtn);
+  container.append(clientField, accountField);
+  if (mismatchWarning) container.appendChild(mismatchWarning);
+  container.append(renderDateFilterField(), el("hr"), scanBtn, videoList, sendBtn);
 
   if (state.status) container.appendChild(el("div", { className: "hint", textContent: state.status }));
   if (state.error) container.appendChild(el("div", { className: "error", textContent: state.error }));
