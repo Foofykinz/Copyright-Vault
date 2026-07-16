@@ -11,9 +11,13 @@ app. This is the piece the web app's "Pull recent videos" button was waiting on.
   client-side. Gives real caption, publish date, and view count. **Refresh the TikTok tab after
   installing/updating the extension** so the interceptor is in place before the page's own first
   request fires — it won't see anything from before it loaded.
-- **X**: reads whatever tweets are currently rendered on a profile/timeline page. Skips reposts and
-  quote-tweet embeds, and only keeps tweets that contain a video. Caption and date are reliable;
-  view count is best-effort (X doesn't always expose it in a stable way).
+- **X**: reads tweets from the DOM (no clean internal endpoint like TikTok/Facebook have) — but
+  since X virtualizes its timeline and unmounts tweets scrolled far out of view, it polls the page
+  continuously in the background and keeps a running list of everything ever seen, rather than
+  only capturing whatever's on screen the instant you click Scan. Just scroll straight through and
+  scan once at the end. Skips reposts and quote-tweet embeds, and only keeps tweets with a video.
+  Caption and date are reliable; view count is best-effort (X doesn't always expose it in a stable
+  way).
 - **Facebook**: intercepts the GraphQL response Facebook's page uses to render a profile/Page
   timeline (`timeline_list_feed_units`), same technique as TikTok. Gives real caption and publish
   date. View count isn't in this response at all (not a bug — Facebook's feed query just doesn't
@@ -26,8 +30,6 @@ app. This is the piece the web app's "Pull recent videos" button was waiting on.
   bolted on here. Keep using manual entry for it until a later pass adds it.
 - Nothing is sent automatically. Every scan populates a review list with checkboxes — you pick
   what actually gets sent.
-- X only renders tweets currently scrolled into view, so scan, scroll down, and scan again to pick
-  up more from a long profile — results accumulate until you send them.
 - The UI is a **side panel**, not a popup — it stays open and docked while you scroll and interact
   with the page, and your selections/scan results survive if it does get closed.
 - **Deduplication is enforced server-side** (by social account + video URL), not just in the
@@ -81,9 +83,10 @@ app. This is the piece the web app's "Pull recent videos" button was waiting on.
    captured but hidden until the filter covers them.
 5. Click "Send N selected". Sent videos disappear from the list; anything that failed stays so you
    can retry.
-6. On TikTok and Facebook, scroll down to load more videos and scan again before sending if you
-   want the whole history in one pass. The side panel stays open while you scroll, unlike a popup
-   would.
+6. Scroll down to load more of the profile's history before sending if you want the whole thing in
+   one pass. On TikTok and Facebook that means scan again after scrolling; on X, capture happens
+   continuously in the background, so you can scroll straight through and scan once at the end.
+   The side panel stays open while you scroll, unlike a popup would.
 
 ## Rebuilding after changes
 

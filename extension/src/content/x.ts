@@ -3,12 +3,21 @@ import { SCAN_MESSAGE } from "../lib/scraped";
 import { truncateWords } from "../../../shared/format";
 
 /**
- * X only renders tweets currently scrolled into view (virtualized timeline), so a scan only
- * captures what's loaded right now — the popup instructs the user to scroll and re-scan to
- * pick up more. Selectors key off data-testid attributes, which X uses for its own internal
- * tooling/accessibility and are meaningfully more stable than class names, but this will still
- * need maintenance if X changes its markup.
+ * X virtualizes its timeline — tweets scrolled far out of view get unmounted from the DOM
+ * entirely, not just hidden. A one-shot scan can only ever see whatever's rendered at that exact
+ * instant, which forced scrolling in small increments with a scan after each one. Instead, this
+ * polls the DOM continuously in the background (the DOM equivalent of how TikTok/Facebook's
+ * network interception accumulates passively as the page loads more) and keeps a running map of
+ * every video tweet ever seen, so a single "Scan this page" click after scrolling all the way
+ * through picks up everything along the way. Selectors key off data-testid attributes, which X
+ * uses for its own internal tooling/accessibility and are meaningfully more stable than class
+ * names, but this will still need maintenance if X changes its markup.
  */
+
+const capturedVideos = new Map<string, ScrapedVideo>();
+const processedTweetIds = new Set<string>();
+const exclusionTotals = { repost: 0, noVideo: 0, authorMismatch: 0 };
+let lastProfileHandle: string | null = null;
 
 function parseCompactNumber(raw: string): number | null {
   const text = raw.trim().toUpperCase().replace(/,/g, "").replace(/VIEWS?$/, "").trim();
@@ -31,62 +40,65 @@ function currentProfileHandle(): string | null {
   return match ? match[1].toLowerCase() : null;
 }
 
-function scan(): ScanResult {
+function resetForNewProfile(): void {
+  capturedVideos.clear();
+  processedTweetIds.clear();
+  exclusionTotals.repost = 0;
+  exclusionTotals.noVideo = 0;
+  exclusionTotals.authorMismatch = 0;
+}
+
+function captureVisibleTweets(): void {
   const profileHandle = currentProfileHandle();
+  // X is a single-page app — navigating to a different profile doesn't reload this content
+  // script, so without this a scroll session on one client's profile could bleed into another's.
+  if (profileHandle !== lastProfileHandle) {
+    resetForNewProfile();
+    lastProfileHandle = profileHandle;
+  }
+
   const articles = Array.from(document.querySelectorAll<HTMLElement>('article[data-testid="tweet"]'));
-  const videos: ScrapedVideo[] = [];
-  const exclusionCounts = { nestedQuote: 0, repost: 0, noVideo: 0, noStatusLink: 0, authorMismatch: 0 };
 
   for (const article of articles) {
     // Skip quote-tweet embeds nested inside another tweet — only top-level timeline entries.
-    if (article.parentElement?.closest('article[data-testid="tweet"]')) {
-      exclusionCounts.nestedQuote += 1;
-      continue;
-    }
+    if (article.parentElement?.closest('article[data-testid="tweet"]')) continue;
+
+    const timeEl = article.querySelector<HTMLTimeElement>('a[href*="/status/"] time');
+    const statusLink = timeEl?.closest("a") as HTMLAnchorElement | null;
+    const href = statusLink?.getAttribute("href") ?? "";
+    const statusMatch = /^\/([A-Za-z0-9_]{1,15})\/status\/(\d+)/.exec(href);
+    // No status link/ID resolvable yet (e.g. still rendering) — don't count it as excluded,
+    // just leave it for a later poll tick to pick up once it settles.
+    if (!statusMatch) continue;
+
+    const [, author, statusId] = statusMatch;
+    if (processedTweetIds.has(statusId)) continue; // already handled on an earlier poll
+    processedTweetIds.add(statusId);
 
     const socialContext = article.querySelector('[data-testid="socialContext"]');
     if (socialContext && /repost/i.test(socialContext.textContent ?? "")) {
-      exclusionCounts.repost += 1;
+      exclusionTotals.repost += 1;
       continue;
     }
 
     const hasVideo = article.querySelector('[data-testid="videoPlayer"], [data-testid="videoComponent"], video');
     if (!hasVideo) {
-      exclusionCounts.noVideo += 1;
+      exclusionTotals.noVideo += 1;
       continue;
     }
-
-    const timeEl = article.querySelector<HTMLTimeElement>('a[href*="/status/"] time');
-    const statusLink = timeEl?.closest("a") as HTMLAnchorElement | null;
-    if (!statusLink) {
-      exclusionCounts.noStatusLink += 1;
-      console.warn("[ViralDRM] X: video found but no status link/time element could be matched", article);
-      continue;
-    }
-
-    const href = statusLink.getAttribute("href") ?? "";
-    const statusMatch = /^\/([A-Za-z0-9_]{1,15})\/status\/(\d+)/.exec(href);
-    if (!statusMatch) {
-      exclusionCounts.noStatusLink += 1;
-      console.warn("[ViralDRM] X: video found but status URL didn't match expected shape:", href);
-      continue;
-    }
-    const [, author, statusId] = statusMatch;
 
     if (profileHandle && author.toLowerCase() !== profileHandle) {
-      exclusionCounts.authorMismatch += 1;
+      exclusionTotals.authorMismatch += 1;
       continue;
     }
 
     const publicationDate = timeEl?.getAttribute("datetime") ?? new Date().toISOString();
-
     const captionEl = article.querySelector('[data-testid="tweetText"]');
     const caption = truncateWords(captionEl?.textContent ?? "");
-
     const analyticsLink = article.querySelector('a[href$="/analytics"]');
     const viewCount = analyticsLink ? parseCompactNumber(analyticsLink.textContent ?? "") : null;
 
-    videos.push({
+    capturedVideos.set(`x:${statusId}`, {
       key: `x:${statusId}`,
       videoUrl: `https://x.com/${author}/status/${statusId}`,
       publicationDate,
@@ -94,8 +106,25 @@ function scan(): ScanResult {
       viewCount,
     });
   }
+}
 
-  return { supported: true, profileHandle, videos, totalCandidates: articles.length, exclusionCounts };
+// Passive background capture — polling is simpler and robust enough here than a MutationObserver
+// for a modest number of visible tweets, and matches how TikTok/Facebook accumulate continuously
+// rather than only reacting to an explicit scan request.
+setInterval(captureVisibleTweets, 1500);
+captureVisibleTweets();
+
+function scan(): ScanResult {
+  captureVisibleTweets(); // catch anything since the last poll tick
+  const totalCandidates =
+    capturedVideos.size + exclusionTotals.repost + exclusionTotals.noVideo + exclusionTotals.authorMismatch;
+  return {
+    supported: true,
+    profileHandle: lastProfileHandle,
+    videos: [...capturedVideos.values()],
+    totalCandidates,
+    exclusionCounts: { ...exclusionTotals },
+  };
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
