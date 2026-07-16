@@ -35,27 +35,48 @@ function scan(): ScanResult {
   const profileHandle = currentProfileHandle();
   const articles = Array.from(document.querySelectorAll<HTMLElement>('article[data-testid="tweet"]'));
   const videos: ScrapedVideo[] = [];
+  const exclusionCounts = { nestedQuote: 0, repost: 0, noVideo: 0, noStatusLink: 0, authorMismatch: 0 };
 
   for (const article of articles) {
     // Skip quote-tweet embeds nested inside another tweet — only top-level timeline entries.
-    if (article.parentElement?.closest('article[data-testid="tweet"]')) continue;
+    if (article.parentElement?.closest('article[data-testid="tweet"]')) {
+      exclusionCounts.nestedQuote += 1;
+      continue;
+    }
 
     const socialContext = article.querySelector('[data-testid="socialContext"]');
-    if (socialContext && /repost/i.test(socialContext.textContent ?? "")) continue;
+    if (socialContext && /repost/i.test(socialContext.textContent ?? "")) {
+      exclusionCounts.repost += 1;
+      continue;
+    }
 
     const hasVideo = article.querySelector('[data-testid="videoPlayer"], [data-testid="videoComponent"], video');
-    if (!hasVideo) continue;
+    if (!hasVideo) {
+      exclusionCounts.noVideo += 1;
+      continue;
+    }
 
     const timeEl = article.querySelector<HTMLTimeElement>('a[href*="/status/"] time');
     const statusLink = timeEl?.closest("a") as HTMLAnchorElement | null;
-    if (!statusLink) continue;
+    if (!statusLink) {
+      exclusionCounts.noStatusLink += 1;
+      console.warn("[ViralDRM] X: video found but no status link/time element could be matched", article);
+      continue;
+    }
 
     const href = statusLink.getAttribute("href") ?? "";
     const statusMatch = /^\/([A-Za-z0-9_]{1,15})\/status\/(\d+)/.exec(href);
-    if (!statusMatch) continue;
+    if (!statusMatch) {
+      exclusionCounts.noStatusLink += 1;
+      console.warn("[ViralDRM] X: video found but status URL didn't match expected shape:", href);
+      continue;
+    }
     const [, author, statusId] = statusMatch;
 
-    if (profileHandle && author.toLowerCase() !== profileHandle) continue;
+    if (profileHandle && author.toLowerCase() !== profileHandle) {
+      exclusionCounts.authorMismatch += 1;
+      continue;
+    }
 
     const publicationDate = timeEl?.getAttribute("datetime") ?? new Date().toISOString();
 
@@ -74,7 +95,7 @@ function scan(): ScanResult {
     });
   }
 
-  return { supported: true, profileHandle, videos, totalCandidates: articles.length };
+  return { supported: true, profileHandle, videos, totalCandidates: articles.length, exclusionCounts };
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

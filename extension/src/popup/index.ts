@@ -267,6 +267,11 @@ async function scanActiveTab(): Promise<void> {
       missingIds: "missing post ID or date",
       noVideoFound: "no video (photo/text post)",
       noUrlOrId: "video found but no link or ID available",
+      nestedQuote: "nested quote-tweet embeds",
+      repost: "reposts",
+      noVideo: "no video (photo/text post)",
+      noStatusLink: "video found but link/date couldn't be matched",
+      authorMismatch: "video belongs to a different account",
     };
     const exclusionParts = Object.entries(result.exclusionCounts ?? {})
       .filter(([, count]) => count > 0)
