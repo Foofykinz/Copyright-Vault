@@ -235,8 +235,8 @@ async function scanActiveTab(): Promise<void> {
     const exclusionLabels: Record<string, string> = {
       share: "shares/reposts",
       missingIds: "missing post ID or date",
-      noVideoAttachment: "no video (photo/text post)",
-      videoWithoutPermalink: "had a video but no link could be found",
+      noVideoFound: "no video (photo/text post)",
+      noUrlOrId: "video found but no link or ID available",
     };
     const exclusionParts = Object.entries(result.exclusionCounts ?? {})
       .filter(([, count]) => count > 0)

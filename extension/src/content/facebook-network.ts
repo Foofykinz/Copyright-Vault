@@ -19,26 +19,36 @@
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const debugStories: any[] = ((window as any).__viralDrmFbRawStories ??= []); // eslint-disable-line @typescript-eslint/no-explicit-any
 
-  function findPermalinkInTree(node: unknown, depth = 0): string | null {
+  function findVideoNode(node: unknown, depth = 0): Record<string, unknown> | null {
     if (!node || typeof node !== "object" || depth > 8) return null;
     const obj = node as Record<string, unknown>;
-    if (obj.__typename === "Video" && typeof obj.permalink_url === "string") return obj.permalink_url;
+    if (obj.__typename === "Video") return obj;
     for (const value of Object.values(obj)) {
       if (value && typeof value === "object") {
-        const found = findPermalinkInTree(value, depth + 1);
+        const found = findVideoNode(value, depth + 1);
         if (found) return found;
       }
     }
     return null;
   }
 
+  function hasUsableUrl(video: Record<string, unknown>): boolean {
+    return typeof video.permalink_url === "string" || video.id !== undefined;
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).__viralDrmFbDebug = () => {
-    const withVideo = debugStories.filter((s) => s.attachments?.some((a: any) => a.media?.__typename === "Video")); // eslint-disable-line @typescript-eslint/no-explicit-any
-    const stuck = withVideo.filter((s) => !s.attachments.some((a: any) => findPermalinkInTree(a.styles) || findPermalinkInTree(a.media))); // eslint-disable-line @typescript-eslint/no-explicit-any
-    console.log(`${debugStories.length} stories captured, ${withVideo.length} have a video attachment, ${stuck.length} couldn't find a permalink.`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const withVideo = debugStories.filter((s) => (s.attachments ?? []).some((a: any) => findVideoNode(a)));
+    // eslint-disable-line @typescript-eslint/no-explicit-any
+    const stuck = withVideo.filter((s) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const video = (s.attachments ?? []).map((a: any) => findVideoNode(a)).find((v: unknown) => v);
+      return !video || !hasUsableUrl(video);
+    });
+    console.log(`${debugStories.length} stories captured, ${withVideo.length} have a video, ${stuck.length} have neither a permalink nor an ID.`);
     for (const s of stuck) {
-      console.log(`--- post_id ${s.post_id} (no permalink found) ---`);
+      console.log(`--- post_id ${s.post_id} ---`);
       console.log(JSON.stringify(s.attachments, null, 2));
     }
     return { total: debugStories.length, withVideo: withVideo.length, stuck: stuck.length };
