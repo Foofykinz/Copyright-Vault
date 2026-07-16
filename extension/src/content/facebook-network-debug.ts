@@ -14,16 +14,44 @@
 (function () {
   const VIDEO_INDICATORS = ["playable_url", "\"video_id\"", "publish_time", "creation_story", "\"is_video\""];
 
+  const captures: unknown[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__viralDrmFbCaptures = captures;
+
   function looksLikeVideoData(text: string): boolean {
     return VIDEO_INDICATORS.some((marker) => text.includes(marker));
   }
 
+  function storeCaptures(text: string): number {
+    // Facebook sometimes returns newline-delimited JSON (Relay multipart/defer responses)
+    // instead of one JSON object, so try line-by-line if a straight parse fails.
+    let stored = 0;
+    try {
+      captures.push(JSON.parse(text));
+      stored += 1;
+      return stored;
+    } catch {
+      // fall through to line-by-line
+    }
+    for (const line of text.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        captures.push(JSON.parse(line));
+        stored += 1;
+      } catch {
+        // not JSON, skip
+      }
+    }
+    return stored;
+  }
+
   function logCandidate(url: string, text: string): void {
+    const stored = storeCaptures(text);
     // eslint-disable-next-line no-console
     console.log(
       `%c[ViralDRM FB debug] ${url}`,
       "color:#4d8dff;font-weight:bold",
-      `\n${text.length} chars — preview:\n${text.slice(0, 1500)}`
+      `\n${text.length} chars, ${stored} JSON object(s) stored — total captured: ${captures.length}. Inspect via window.__viralDrmFbCaptures`
     );
   }
 
