@@ -227,12 +227,16 @@ async function scanActiveTab(): Promise<void> {
     persistSession();
 
     const visibleCount = visibleVideos().length;
+    const hiddenByFilter = state.scannedVideos.size - visibleCount;
     const candidateNote =
       result.totalCandidates !== undefined ? ` (${result.totalCandidates} post${result.totalCandidates === 1 ? "" : "s"} seen on page)` : "";
     state.status =
       `Scan found ${result.videos.length} video${result.videos.length === 1 ? "" : "s"}${candidateNote}` +
       (skippedDuplicates > 0 ? `, ${skippedDuplicates} already imported (skipped)` : "") +
-      `. ${added} new this scan; ${visibleCount} shown under the current date filter. Scroll down and scan again for more.`;
+      `. ${added} new this scan; ${visibleCount} shown under the current date filter.` +
+      (hiddenByFilter > 0
+        ? ` ${hiddenByFilter} captured video${hiddenByFilter === 1 ? " is" : "s are"} hidden by the date filter — switch to Custom date range to see ${hiddenByFilter === 1 ? "it" : "them"}.`
+        : " Scroll down and scan again for more.");
   } catch {
     state.error = "Open a TikTok profile, an X profile/timeline, or a Facebook page/profile, then try scanning again.";
   }
