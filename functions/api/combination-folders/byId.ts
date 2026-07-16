@@ -25,17 +25,21 @@ export const onRequestGet: ApiHandler = async (context) => {
       .all();
     const videos = videoRows.results.map((r) => mapVideo(r as never));
 
+    // Self-joins combination_folder_videos (scoped by this folder's id, a single bound parameter)
+    // to find every folder each of those videos belongs to, rather than an IN (...) list sized by
+    // video count — D1 caps bound parameters per statement, and a large folder was exceeding it.
     const folderRows =
       videos.length === 0
         ? { results: [] as { video_id: string; id: string; name: string; color: string }[] }
         : await db
             .prepare(
-              `SELECT cfv.video_id as video_id, cf.id as id, cf.name as name, cf.color as color
-               FROM combination_folder_videos cfv
-               JOIN combination_folders cf ON cf.id = cfv.combination_folder_id
-               WHERE cfv.video_id IN (${videos.map(() => "?").join(",")})`
+              `SELECT cfv2.video_id as video_id, cf.id as id, cf.name as name, cf.color as color
+               FROM combination_folder_videos cfv1
+               JOIN combination_folder_videos cfv2 ON cfv2.video_id = cfv1.video_id
+               JOIN combination_folders cf ON cf.id = cfv2.combination_folder_id
+               WHERE cfv1.combination_folder_id = ?`
             )
-            .bind(...videos.map((v) => v.id))
+            .bind(id)
             .all<{ video_id: string; id: string; name: string; color: string }>();
 
     const foldersByVideo = new Map<string, CombinationFolderSummary[]>();

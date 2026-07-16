@@ -19,6 +19,9 @@ export const onRequestGet: ApiHandler = async (context) => {
 
     const videos = videoRows.results.map((r) => mapVideo(r as never));
 
+    // Joins through videos (filtered by social_account_id, a single bound parameter) rather than
+    // an IN (...) list sized by video count — D1 caps bound parameters per statement, and a large
+    // account's video list was exceeding it, breaking the whole page.
     const folderRows =
       videos.length === 0
         ? { results: [] as { video_id: string; id: string; name: string; color: string }[] }
@@ -27,9 +30,10 @@ export const onRequestGet: ApiHandler = async (context) => {
               `SELECT cfv.video_id as video_id, cf.id as id, cf.name as name, cf.color as color
                FROM combination_folder_videos cfv
                JOIN combination_folders cf ON cf.id = cfv.combination_folder_id
-               WHERE cfv.video_id IN (${videos.map(() => "?").join(",")})`
+               JOIN videos v ON v.id = cfv.video_id
+               WHERE v.social_account_id = ?`
             )
-            .bind(...videos.map((v) => v.id))
+            .bind(socialAccountId)
             .all<{ video_id: string; id: string; name: string; color: string }>();
 
     const foldersByVideo = new Map<string, CombinationFolderSummary[]>();
