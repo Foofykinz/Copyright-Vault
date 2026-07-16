@@ -12,6 +12,9 @@ export interface ScanResult {
   supported: boolean;
   profileHandle: string | null;
   videos: ScrapedVideo[];
+  /** Total posts/items seen so far (before filtering to originals-with-video), for diagnosing
+   * whether a low video count means "scroll more" or "something's being filtered out wrongly". */
+  totalCandidates?: number;
 }
 
 export const SCAN_MESSAGE = "viral-drm-scan";

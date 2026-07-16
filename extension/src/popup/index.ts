@@ -227,8 +227,10 @@ async function scanActiveTab(): Promise<void> {
     persistSession();
 
     const visibleCount = visibleVideos().length;
+    const candidateNote =
+      result.totalCandidates !== undefined ? ` (${result.totalCandidates} post${result.totalCandidates === 1 ? "" : "s"} seen on page)` : "";
     state.status =
-      `Scan found ${result.videos.length} video${result.videos.length === 1 ? "" : "s"} on the page` +
+      `Scan found ${result.videos.length} video${result.videos.length === 1 ? "" : "s"}${candidateNote}` +
       (skippedDuplicates > 0 ? `, ${skippedDuplicates} already imported (skipped)` : "") +
       `. ${added} new this scan; ${visibleCount} shown under the current date filter. Scroll down and scan again for more.`;
   } catch {

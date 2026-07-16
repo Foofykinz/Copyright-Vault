@@ -74,7 +74,7 @@ function scan(): ScanResult {
     });
   }
 
-  return { supported: true, profileHandle, videos };
+  return { supported: true, profileHandle, videos, totalCandidates: articles.length };
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

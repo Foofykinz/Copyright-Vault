@@ -45,7 +45,7 @@ function scan(): ScanResult {
     };
   });
 
-  return { supported: true, profileHandle: handle, videos };
+  return { supported: true, profileHandle: handle, videos, totalCandidates: capturedItems.size };
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
