@@ -110,8 +110,26 @@ function captureVisibleTweets(): void {
 
 // Passive background capture — polling is simpler and robust enough here than a MutationObserver
 // for a modest number of visible tweets, and matches how TikTok/Facebook accumulate continuously
-// rather than only reacting to an explicit scan request.
-setInterval(captureVisibleTweets, 1500);
+// rather than only reacting to an explicit scan request. A fast scroll can render and then
+// virtualize a tweet back out between two poll ticks, so this also captures on scroll directly
+// (throttled) rather than relying on the interval alone — capture:true on document catches scroll
+// events regardless of whether X scrolls the window or an inner container.
+setInterval(captureVisibleTweets, 500);
+
+let scrollCaptureScheduled = false;
+document.addEventListener(
+  "scroll",
+  () => {
+    if (scrollCaptureScheduled) return;
+    scrollCaptureScheduled = true;
+    setTimeout(() => {
+      captureVisibleTweets();
+      scrollCaptureScheduled = false;
+    }, 150);
+  },
+  { passive: true, capture: true }
+);
+
 captureVisibleTweets();
 
 function scan(): ScanResult {
