@@ -302,6 +302,17 @@ async function sendSelected(): Promise<void> {
     return;
   }
 
+  // Hard block, no override: the account dropdown can end up pointing at any platform regardless
+  // of which page was actually scanned (nothing keeps it in sync once a value is selected), and
+  // platform/socialAccountId sent to the server come entirely from this selection, never from the
+  // scan result itself. A platform-type mismatch here is never correct, unlike the softer
+  // client-mismatch check below which allows a deliberate override.
+  if (state.tabPlatform && account.platform !== state.tabPlatform) {
+    state.error = `Selected account is ${PLATFORM_LABELS[account.platform]}, but this page is ${PLATFORM_LABELS[state.tabPlatform]}. Choose an account of the matching platform before sending.`;
+    render();
+    return;
+  }
+
   if (profileLooksMismatched(account.profileUrl, state.tabUrl) && !state.mismatchAcknowledged) {
     state.error = "This page doesn't look like it matches the selected social account. Check the box above to confirm before sending.";
     render();
@@ -552,6 +563,13 @@ function renderMainView(): HTMLElement {
   }
 
   const selectedAccount = state.socialAccounts.find((a) => a.id === state.selectedSocialAccountId) ?? null;
+  const platformMismatch = Boolean(selectedAccount && state.tabPlatform && selectedAccount.platform !== state.tabPlatform);
+  const platformMismatchWarning = platformMismatch
+    ? el("div", {
+        className: "error",
+        textContent: `Selected account is ${PLATFORM_LABELS[selectedAccount!.platform]}, but this page is ${state.tabPlatform ? PLATFORM_LABELS[state.tabPlatform] : "unknown"} — choose a matching account to send.`,
+      })
+    : null;
   const mismatchWarning =
     selectedAccount && profileLooksMismatched(selectedAccount.profileUrl, state.tabUrl)
       ? (() => {
@@ -590,7 +608,7 @@ function renderMainView(): HTMLElement {
   const sendBtn = el("button", {
     className: "primary",
     textContent: state.busy ? "Sending…" : `Send ${sendableCount} selected`,
-    disabled: state.busy || sendableCount === 0 || !state.selectedSocialAccountId || blockedByMismatch,
+    disabled: state.busy || sendableCount === 0 || !state.selectedSocialAccountId || blockedByMismatch || platformMismatch,
   });
   sendBtn.addEventListener("click", () => void sendSelected());
 
@@ -601,6 +619,7 @@ function renderMainView(): HTMLElement {
   });
 
   container.append(clientField, accountField);
+  if (platformMismatchWarning) container.appendChild(platformMismatchWarning);
   if (mismatchWarning) container.appendChild(mismatchWarning);
   container.append(renderDateFilterField(), el("hr"), scanBtn, videoList, sendBtn);
 
