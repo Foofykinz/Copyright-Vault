@@ -91,7 +91,12 @@ export function VideoTableRow({ video, selected, onToggleSelect, onUpdated, onDe
             disabled={saving}
           />
         ) : (
-          <span onClick={() => startEdit("caption", video.caption ?? "")} style={{ cursor: "text" }}>
+          <span
+            className="truncate"
+            onClick={() => startEdit("caption", video.caption ?? "")}
+            title={video.caption ?? undefined}
+            style={{ cursor: "text" }}
+          >
             {video.caption || <span className="text-secondary">—</span>}
           </span>
         )}
@@ -143,7 +148,12 @@ export function VideoTableRow({ video, selected, onToggleSelect, onUpdated, onDe
             disabled={saving}
           />
         ) : (
-          <span onClick={() => startEdit("notes", video.notes ?? "")} style={{ cursor: "text" }}>
+          <span
+            className="truncate"
+            onClick={() => startEdit("notes", video.notes ?? "")}
+            title={video.notes ?? undefined}
+            style={{ cursor: "text" }}
+          >
             {video.notes || <span className="text-secondary">—</span>}
           </span>
         )}

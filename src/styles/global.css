@@ -418,9 +418,15 @@ table.dense-table td {
   white-space: nowrap;
 }
 
-td.wrap {
-  white-space: normal;
+table.dense-table td.wrap {
   max-width: 320px;
+}
+
+.truncate {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .folder-row-indicator {
