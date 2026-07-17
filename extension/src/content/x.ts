@@ -114,6 +114,18 @@ function captureVisibleTweets(): void {
       continue;
     }
 
+    // timeEl is guaranteed to exist here (statusMatch required it), but its datetime attribute
+    // could still be unpopulated for a moment if this part of the tweet hasn't fully hydrated —
+    // same class of timing issue as the video player. Don't fabricate "now" as a fallback; just
+    // leave it for a later poll rather than locking in a wrong permanent date.
+    const publicationDate = timeEl?.getAttribute("datetime");
+    if (!publicationDate) continue;
+
+    const captionEl = article.querySelector('[data-testid="tweetText"]');
+    const caption = truncateWords(captionEl?.textContent ?? "");
+    const analyticsLink = article.querySelector('a[href$="/analytics"]');
+    const viewCount = analyticsLink ? parseCompactNumber(analyticsLink.textContent ?? "") : null;
+
     // Successful capture — lock it in and undo any earlier (now-stale) exclusion count so the
     // stats don't double-count a tweet that failed hasOwnVideo on an earlier poll before its
     // video player mounted.
@@ -122,12 +134,6 @@ function captureVisibleTweets(): void {
       exclusionTotals.noVideo = Math.max(0, exclusionTotals.noVideo - 1);
     }
     capturedTweetIds.add(statusId);
-
-    const publicationDate = timeEl?.getAttribute("datetime") ?? new Date().toISOString();
-    const captionEl = article.querySelector('[data-testid="tweetText"]');
-    const caption = truncateWords(captionEl?.textContent ?? "");
-    const analyticsLink = article.querySelector('a[href$="/analytics"]');
-    const viewCount = analyticsLink ? parseCompactNumber(analyticsLink.textContent ?? "") : null;
 
     capturedVideos.set(`x:${statusId}`, {
       key: `x:${statusId}`,
