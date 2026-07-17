@@ -62,6 +62,7 @@ function detectTabPlatform(url: string | undefined): Platform | null {
     if (host === "tiktok.com") return "tiktok";
     if (host === "x.com" || host === "twitter.com") return "x";
     if (host === "facebook.com") return "facebook";
+    if (host === "instagram.com") return "instagram";
   } catch {
     return null;
   }
@@ -272,6 +273,7 @@ async function scanActiveTab(): Promise<void> {
       noVideo: "no video (photo/text post)",
       noStatusLink: "video found but link/date couldn't be matched",
       authorMismatch: "video belongs to a different account",
+      notAuthor: "posted by neither the profile nor a listed coauthor",
     };
     const exclusionParts = Object.entries(result.exclusionCounts ?? {})
       .filter(([, count]) => count > 0)
@@ -287,7 +289,7 @@ async function scanActiveTab(): Promise<void> {
         : " Scroll down and scan again for more.") +
       exclusionNote;
   } catch {
-    state.error = "Open a TikTok profile, an X profile/timeline, or a Facebook page/profile, then try scanning again.";
+    state.error = "Open a TikTok, X, Facebook, or Instagram profile page, then try scanning again.";
   }
   render();
 }
@@ -483,11 +485,16 @@ function renderDateFilterField(): HTMLElement {
 function renderMainView(): HTMLElement {
   const container = el("div");
 
-  if (state.tabPlatform === "tiktok" || state.tabPlatform === "x" || state.tabPlatform === "facebook") {
+  if (
+    state.tabPlatform === "tiktok" ||
+    state.tabPlatform === "x" ||
+    state.tabPlatform === "facebook" ||
+    state.tabPlatform === "instagram"
+  ) {
     container.appendChild(el("div", { className: "hint", textContent: `Detected platform: ${PLATFORM_LABELS[state.tabPlatform]}` }));
   } else {
     container.appendChild(
-      el("div", { className: "hint", textContent: "Navigate to a TikTok, X, or Facebook profile to scan for videos." })
+      el("div", { className: "hint", textContent: "Navigate to a TikTok, X, Facebook, or Instagram profile to scan for videos." })
     );
   }
 

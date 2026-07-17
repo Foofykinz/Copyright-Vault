@@ -1,7 +1,7 @@
 # Viral DRM Collector (browser extension)
 
-Collects a client's own videos from TikTok, X, and Facebook and sends them to the Viral DRM web
-app. This is the piece the web app's "Pull recent videos" button was waiting on.
+Collects a client's own videos from TikTok, X, Facebook, and Instagram and sends them to the Viral
+DRM web app. This is the piece the web app's "Pull recent videos" button was waiting on.
 
 ## What it does and doesn't do
 
@@ -25,9 +25,20 @@ app. This is the piece the web app's "Pull recent videos" button was waiting on.
   Facebook's own `attached_story` field, which is only populated when a Story wraps someone else's
   post rather than being an original one. **Refresh the Facebook tab after installing/updating the
   extension**, same reason as TikTok — the interceptor only sees requests made after it loads.
-- **Instagram**: not implemented yet — Meta's Instagram web app is the most obfuscated and
-  frequently-changed of the four, so it needs its own dedicated diagnostic pass rather than being
-  bolted on here. Keep using manual entry for it until a later pass adds it.
+- **Instagram**: intercepts the GraphQL response Instagram's page uses to render a profile timeline
+  (`xdt_api__v1__feed__user_timeline_graphql_connection`), same technique as Facebook, but searches
+  the whole response for anything shaped like a Relay connection (`{ edges, page_info }`) rather
+  than one fixed field name, since different query variants (initial load vs. pagination) are
+  likely to use different names for it — the same gap that initially made Facebook miss
+  scroll-triggered content. Gives real caption and publish date. View count is present in the
+  schema but not populated by this query, so it stays manual. **Collab posts count as the
+  profile's own** if the profile is listed as either the primary `user` or a coauthor — Instagram
+  posts co-authored between two accounts show up on both profiles' timelines. Videos inside
+  carousels (mixed photo/video posts) are extracted too, but share the parent post's single
+  permalink and caption — Instagram doesn't expose a distinct URL per carousel item, so if a
+  carousel contains more than one video, only the first one sent will actually get stored (the
+  rest will look like duplicates of it to the dedup check). **Refresh the Instagram tab after
+  installing/updating the extension**, same reason as TikTok/Facebook.
 - Nothing is sent automatically. Every scan populates a review list with checkboxes — you pick
   what actually gets sent.
 - The UI is a **side panel**, not a popup — it stays open and docked while you scroll and interact
@@ -71,8 +82,8 @@ app. This is the piece the web app's "Pull recent videos" button was waiting on.
 
 ## Using it
 
-1. Open a client's TikTok profile (`tiktok.com/@handle`), X profile (`x.com/handle`), or Facebook
-   page/profile.
+1. Open a client's TikTok profile (`tiktok.com/@handle`), X profile (`x.com/handle`), Facebook
+   page/profile, or Instagram profile.
 2. Click the extension icon to open the side panel (or it may already be open from before — it
    stays docked across page navigation). Pick the Client and Social Account (auto-filtered to the
    matching platform when possible).
@@ -84,9 +95,9 @@ app. This is the piece the web app's "Pull recent videos" button was waiting on.
 5. Click "Send N selected". Sent videos disappear from the list; anything that failed stays so you
    can retry.
 6. Scroll down to load more of the profile's history before sending if you want the whole thing in
-   one pass. On TikTok and Facebook that means scan again after scrolling; on X, capture happens
-   continuously in the background, so you can scroll straight through and scan once at the end.
-   The side panel stays open while you scroll, unlike a popup would.
+   one pass. On TikTok, Facebook, and Instagram that means scan again after scrolling; on X,
+   capture happens continuously in the background, so you can scroll straight through and scan
+   once at the end. The side panel stays open while you scroll, unlike a popup would.
 
 ## Rebuilding after changes
 
@@ -102,5 +113,7 @@ TikTok, X, and Meta can all change them without notice, which will break the cor
 script. If a scan stops finding videos, that's the most likely reason; the parsing logic in
 `src/content/tiktok-network.ts` (TikTok's `/api/post/item_list` response shape),
 `src/content/tiktok.ts`, `src/content/x.ts`, `src/content/facebook-network.ts` (Facebook's
-`timeline_list_feed_units` response shape), and `src/content/facebook.ts` will need updating to
-match whatever the platform looks like at that point.
+`timeline_list_feed_units` response shape), `src/content/facebook.ts`,
+`src/content/instagram-network.ts` (Instagram's `xdt_api__v1__feed__user_timeline_graphql_connection`
+response shape), and `src/content/instagram.ts` will need updating to match whatever the platform
+looks like at that point.

@@ -90,7 +90,10 @@ export function SocialAccountPage() {
 
       <div className="hint" style={{ marginBottom: 12 }}>
         Last pulled: {socialAccount.lastPullAt ? formatDisplayDate(socialAccount.lastPullAt) : "Never"}
-        {(socialAccount.platform === "tiktok" || socialAccount.platform === "x") &&
+        {(socialAccount.platform === "tiktok" ||
+          socialAccount.platform === "x" ||
+          socialAccount.platform === "facebook" ||
+          socialAccount.platform === "instagram") &&
           " · Open the profile above, then use the Viral DRM Collector extension to scan and send videos."}
       </div>
 
