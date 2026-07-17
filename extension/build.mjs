@@ -34,6 +34,7 @@ const iifeEntryPoints = {
   "content-x": path.join(dirname, "src/content/x.ts"),
   "content-facebook": path.join(dirname, "src/content/facebook.ts"),
   "content-facebook-network": path.join(dirname, "src/content/facebook-network.ts"),
+  "content-instagram-network-debug": path.join(dirname, "src/content/instagram-network-debug.ts"),
 };
 
 if (watch) {

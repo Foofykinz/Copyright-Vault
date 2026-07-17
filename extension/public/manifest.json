@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Viral DRM Collector",
   "version": "0.1.0",
-  "description": "Collects original client videos from TikTok and X and sends them to Viral DRM for tracking.",
+  "description": "Collects original client videos from TikTok, X, and Facebook and sends them to Viral DRM for tracking.",
   "action": {
     "default_title": "Viral DRM Collector"
   },
@@ -42,6 +42,12 @@
       "matches": ["https://www.facebook.com/*"],
       "js": ["content-facebook.js"],
       "run_at": "document_start"
+    },
+    {
+      "matches": ["https://www.instagram.com/*"],
+      "js": ["content-instagram-network-debug.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
     }
   ]
 }
