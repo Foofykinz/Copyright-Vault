@@ -1,11 +1,14 @@
-import type { ApiHandler, Env } from "../../lib/env";
-import { errorResponse, json, readJson, UnauthorizedError, ValidationError } from "../../lib/http";
+import type { ApiHandler } from "../../lib/env";
+import { errorResponse, json, readJson, ValidationError } from "../../lib/http";
+import { requireBearerToken } from "../../lib/auth";
 import { generateId, nowIso } from "../../lib/ids";
 import { getClientOrThrow, getSocialAccountOrThrow, mapVideo } from "../../lib/db";
 import {
   optionalIsoDate,
   optionalNonNegativeInt,
   optionalString,
+  optionalUrl,
+  optionalYoutubeCategory,
   requirePlatform,
   requireIsoDate,
   requireString,
@@ -58,6 +61,8 @@ export const onRequestPost: ApiHandler = async (context) => {
     const caption = optionalString(body.caption);
     const viewCount = optionalNonNegativeInt(body.viewCount, "viewCount", 0);
     const viewCountCheckedAt = optionalIsoDate(body.viewCountCheckedAt, "viewCountCheckedAt");
+    const thumbnailUrl = optionalUrl(body.thumbnailUrl, "thumbnailUrl");
+    const youtubeCategory = optionalYoutubeCategory(body.youtubeCategory);
 
     const client = await getClientOrThrow(context.env.DB, clientId);
     const account = await getSocialAccountOrThrow(context.env.DB, socialAccountId);
@@ -94,8 +99,8 @@ export const onRequestPost: ApiHandler = async (context) => {
       .prepare(
         `INSERT INTO videos
           (id, client_id, social_account_id, platform, video_url, publication_date, caption, view_count,
-           view_count_checked_at, thumbnail_url, notes, collected_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)`
+           view_count_checked_at, thumbnail_url, notes, youtube_category, collected_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`
       )
       .bind(
         id,
@@ -107,6 +112,8 @@ export const onRequestPost: ApiHandler = async (context) => {
         caption,
         viewCount,
         viewCountCheckedAt,
+        thumbnailUrl,
+        youtubeCategory,
         now,
         now,
         now
@@ -126,8 +133,9 @@ export const onRequestPost: ApiHandler = async (context) => {
           caption,
           view_count: viewCount,
           view_count_checked_at: viewCountCheckedAt,
-          thumbnail_url: null,
+          thumbnail_url: thumbnailUrl,
           notes: null,
+          youtube_category: youtubeCategory,
           collected_at: now,
           created_at: now,
           updated_at: now,
@@ -145,12 +153,3 @@ export const onRequestPost: ApiHandler = async (context) => {
     return errorResponse(err);
   }
 };
-
-function requireBearerToken(request: Request, env: Env): void {
-  if (!env.EXTENSION_API_TOKEN) return; // no token configured yet — open in local dev
-  const header = request.headers.get("authorization") ?? "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  if (token !== env.EXTENSION_API_TOKEN) {
-    throw new UnauthorizedError("Invalid or missing extension API token.");
-  }
-}

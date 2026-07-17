@@ -1,5 +1,5 @@
-import type { ScanResult, ScrapedVideo } from "../lib/scraped";
-import { SCAN_MESSAGE } from "../lib/scraped";
+import type { EnrichViewCountsResult, ScanResult, ScrapedVideo } from "../lib/scraped";
+import { ENRICH_VIEW_COUNTS_MESSAGE, SCAN_MESSAGE } from "../lib/scraped";
 import { truncateWords } from "../../../shared/format";
 
 interface IgUser {
@@ -31,6 +31,74 @@ const NETWORK_MESSAGE_SOURCE = "viral-drm-instagram";
 const capturedNodes = new Map<string, IgNode>();
 let lastProfileHandle: string | null = null;
 
+// Relayed from content/instagram-network.ts (MAIN world), which observes it on a real request
+// Instagram's own code makes. Needed to call /api/v1/media/<pk>/info/ ourselves for view-count
+// enrichment — Instagram rejects that endpoint without it.
+let capturedAppId: string | null = null;
+
+// Confirmed via live capture: the profile-timeline query never carries a populated view count, but
+// /api/v1/media/<pk>/info/ does (items[0].play_count / ig_play_count). Cached by pk so repeat scans
+// of the same profile don't re-request videos we already have a confirmed answer for. Only
+// successful lookups are cached — a failed request (network error, 429, etc.) is left uncached so
+// a later scan can naturally try again, without this script retrying it itself.
+const viewCountCache = new Map<string, number | null>();
+const MAX_CONCURRENT_ENRICH_REQUESTS = 3;
+
+function readCookie(name: string): string | null {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+interface CountLookup {
+  ok: boolean;
+  count: number | null;
+}
+
+async function fetchPlayCount(pk: string): Promise<CountLookup> {
+  try {
+    const headers: Record<string, string> = {};
+    if (capturedAppId) headers["x-ig-app-id"] = capturedAppId;
+    const csrftoken = readCookie("csrftoken");
+    if (csrftoken) headers["x-csrftoken"] = csrftoken;
+
+    const response = await fetch(`https://www.instagram.com/api/v1/media/${pk}/info/`, {
+      method: "GET",
+      headers,
+      credentials: "include",
+    });
+    if (!response.ok) return { ok: false, count: null }; // includes 429 — no retry here, no throw
+    const json = (await response.json()) as { items?: { play_count?: unknown; ig_play_count?: unknown }[] };
+    const raw = json.items?.[0]?.play_count ?? json.items?.[0]?.ig_play_count;
+    return { ok: true, count: typeof raw === "number" ? raw : null };
+  } catch {
+    return { ok: false, count: null };
+  }
+}
+
+/** Looks up view counts for a set of media pks, respecting the cache and a small concurrency cap
+ * so a large batch doesn't fire dozens of simultaneous requests at Instagram at once. */
+async function enrichViewCounts(pks: string[]): Promise<Map<string, number | null>> {
+  const results = new Map<string, number | null>();
+  const toFetch: string[] = [];
+  for (const pk of new Set(pks)) {
+    if (viewCountCache.has(pk)) results.set(pk, viewCountCache.get(pk)!);
+    else toFetch.push(pk);
+  }
+
+  let next = 0;
+  async function worker(): Promise<void> {
+    while (next < toFetch.length) {
+      const pk = toFetch[next++];
+      const lookup = await fetchPlayCount(pk);
+      results.set(pk, lookup.count);
+      if (lookup.ok) viewCountCache.set(pk, lookup.count);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(MAX_CONCURRENT_ENRICH_REQUESTS, toFetch.length) }, worker));
+
+  return results;
+}
+
 // Reserved top-level paths that share the same single-segment URL shape as a profile
 // (instagram.com/<username>/) but aren't profiles — without this, currentProfileHandle() would
 // misidentify them.
@@ -51,8 +119,14 @@ function resetForNewProfile(): void {
 // intercept the actual GraphQL responses Instagram's own JavaScript uses to render the profile.
 window.addEventListener("message", (event) => {
   if (event.source !== window) return;
-  const data = event.data as { source?: string; nodes?: unknown } | undefined;
-  if (data?.source !== NETWORK_MESSAGE_SOURCE || !Array.isArray(data.nodes)) return;
+  const data = event.data as { source?: string; nodes?: unknown; appId?: string } | undefined;
+  if (data?.source !== NETWORK_MESSAGE_SOURCE) return;
+
+  if (typeof data.appId === "string") {
+    capturedAppId = data.appId;
+    return;
+  }
+  if (!Array.isArray(data.nodes)) return;
 
   const profileHandle = currentProfileHandle();
   if (profileHandle !== lastProfileHandle) {
@@ -98,7 +172,7 @@ function extractVideosFromNode(node: IgNode): ScrapedVideo[] {
       videoUrl: permalink,
       publicationDate: new Date(node.taken_at * 1000).toISOString(),
       caption,
-      viewCount: null, // present in the schema but not populated by this query — stays manual
+      viewCount: null, // not populated by the timeline query — filled in later via enrichViewCounts
     });
   }
 
@@ -112,7 +186,7 @@ function extractVideosFromNode(node: IgNode): ScrapedVideo[] {
         videoUrl: permalink,
         publicationDate: new Date(takenAt * 1000).toISOString(),
         caption,
-        viewCount: null,
+        viewCount: null, // filled in later via enrichViewCounts
       });
     }
   }
@@ -159,5 +233,19 @@ function scan(): ScanResult {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === SCAN_MESSAGE) {
     sendResponse(scan());
+    return;
+  }
+  if (message?.type === ENRICH_VIEW_COUNTS_MESSAGE && Array.isArray(message.keys)) {
+    const pkByKey = new Map<string, string>();
+    for (const key of message.keys as string[]) {
+      const pk = key.startsWith("instagram:") ? key.slice("instagram:".length) : null;
+      if (pk) pkByKey.set(key, pk);
+    }
+    enrichViewCounts([...pkByKey.values()]).then((countsByPk) => {
+      const result: EnrichViewCountsResult = {};
+      for (const [key, pk] of pkByKey) result[key] = countsByPk.get(pk) ?? null;
+      sendResponse(result);
+    });
+    return true; // keep the message channel open for the async sendResponse above
   }
 });

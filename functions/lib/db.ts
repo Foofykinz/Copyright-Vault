@@ -18,6 +18,9 @@ interface SocialAccountRow {
   last_pull_at: string | null;
   created_at: string;
   updated_at: string;
+  youtube_channel_id?: string | null;
+  youtube_uploads_playlist_id?: string | null;
+  youtube_handle?: string | null;
 }
 
 interface VideoRow {
@@ -35,6 +38,7 @@ interface VideoRow {
   collected_at: string;
   created_at: string;
   updated_at: string;
+  youtube_category?: string | null;
 }
 
 interface CombinationFolderRow {
@@ -67,6 +71,9 @@ export function mapSocialAccount(row: SocialAccountRow): SocialAccount {
     lastPullAt: row.last_pull_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    youtubeChannelId: row.youtube_channel_id ?? null,
+    youtubeUploadsPlaylistId: row.youtube_uploads_playlist_id ?? null,
+    youtubeHandle: row.youtube_handle ?? null,
   };
 }
 
@@ -86,6 +93,7 @@ export function mapVideo(row: VideoRow): Video {
     collectedAt: row.collected_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    youtubeCategory: (row.youtube_category as Video["youtubeCategory"]) ?? null,
   };
 }
 

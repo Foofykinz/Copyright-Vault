@@ -1,15 +1,30 @@
 import type { ScanResult, ScrapedVideo } from "../lib/scraped";
-import { SCAN_MESSAGE } from "../lib/scraped";
+import { isDevBuild, SCAN_MESSAGE } from "../lib/scraped";
 import { truncateWords } from "../../../shared/format";
+
+/** The entity (Page or user) that posted a Story. `actors` is a well-established top-level field on
+ * Facebook's GraphQL Story type in the wild, but — unlike the Video-node/caption paths elsewhere in
+ * this file — it hasn't been confirmed against a live capture the way those were, so it's also
+ * checked at the same nested path the caption lives at (comet_sections.content.story.actors) in
+ * case this query variant puts it there instead. If neither path has it, ownership can't be
+ * established for that story; verify against window.__viralDrmFbRawStories in the console and
+ * adjust findActors() if the real path turns out to differ. */
+interface FacebookActor {
+  id?: string | number;
+  url?: string;
+  name?: string;
+}
 
 interface FacebookStory {
   post_id?: string;
   creation_time?: number;
   attached_story?: unknown;
   attachments?: unknown[];
+  actors?: FacebookActor[];
   comet_sections?: {
     content?: {
       story?: {
+        actors?: FacebookActor[];
         comet_sections?: {
           message?: {
             story?: {
@@ -24,6 +39,73 @@ interface FacebookStory {
 
 const NETWORK_MESSAGE_SOURCE = "viral-drm-facebook";
 const capturedStories = new Map<string, FacebookStory>();
+let lastProfileHandle: string | null = null;
+
+function resetForNewProfile(): void {
+  capturedStories.clear();
+}
+
+// Reserved top-level paths that share the same single-segment URL shape as a profile/Page
+// (facebook.com/<name>/) but aren't one — without this, currentProfileHandle() would misidentify
+// them as a profile to scope captures to.
+const RESERVED_PATHS = new Set([
+  "watch", "groups", "marketplace", "gaming", "events", "pages", "help", "settings", "messages",
+  "notifications", "stories", "reel", "story.php", "photo.php", "permalink.php", "share", "login",
+  "home.php", "friends",
+]);
+
+function currentProfileHandle(): string | null {
+  const { pathname, search } = location;
+  if (pathname === "/profile.php") {
+    const id = new URLSearchParams(search).get("id");
+    return id ? id.toLowerCase() : null;
+  }
+  const peopleMatch = /^\/people\/[^/]+\/(\d+)/.exec(pathname);
+  if (peopleMatch) return peopleMatch[1];
+
+  const match = /^\/([A-Za-z0-9_.\-]{1,80})\/?/.exec(pathname);
+  if (!match) return null;
+  const handle = match[1].toLowerCase();
+  return RESERVED_PATHS.has(handle) ? null : handle;
+}
+
+function findActors(story: FacebookStory): FacebookActor[] | null {
+  if (Array.isArray(story.actors) && story.actors.length > 0) return story.actors;
+  const nested = story.comet_sections?.content?.story?.actors;
+  if (Array.isArray(nested) && nested.length > 0) return nested;
+  return null;
+}
+
+/** Deliberately does NOT compare actor.name against the URL handle — a Page's display name has no
+ * reliable relationship to its vanity URL (e.g. "Reed Timmer" vs. "reedtimmerwx"), so that would be
+ * guessing, not verifying. Only a numeric ID match or the actor's own permalink resolving to the
+ * same handle count as a real match. */
+function actorMatchesProfile(actor: FacebookActor, profileHandle: string): boolean {
+  if (actor.id !== undefined && String(actor.id).toLowerCase() === profileHandle) return true;
+  if (typeof actor.url === "string") {
+    try {
+      const url = new URL(actor.url, location.origin);
+      if (url.pathname === "/profile.php") {
+        const id = url.searchParams.get("id");
+        if (id && id.toLowerCase() === profileHandle) return true;
+      } else {
+        const seg = /^\/([A-Za-z0-9_.\-]{1,80})\/?/.exec(url.pathname)?.[1]?.toLowerCase();
+        if (seg && seg === profileHandle) return true;
+      }
+    } catch {
+      // malformed actor URL — no match
+    }
+  }
+  return false;
+}
+
+/** If ownership can't be established (no actors found at either known path), the story is excluded
+ * rather than assumed to belong to whatever profile is currently open. */
+function isAuthoredByProfile(story: FacebookStory, profileHandle: string): boolean {
+  const actors = findActors(story);
+  if (!actors) return false;
+  return actors.some((actor) => actorMatchesProfile(actor, profileHandle));
+}
 
 /**
  * Facebook wraps a video's real data differently depending on presentation (Reel vs. regular
@@ -90,8 +172,23 @@ window.addEventListener("message", (event) => {
   if (event.source !== window) return;
   const data = event.data as { source?: string; stories?: unknown } | undefined;
   if (data?.source !== NETWORK_MESSAGE_SOURCE || !Array.isArray(data.stories)) return;
+
+  const profileHandle = currentProfileHandle();
+  // Facebook is a heavy SPA — browsing from one client's Page to another's (or through the home
+  // feed in between) doesn't reload this content script, so without this a session could mix
+  // Stories from several different profiles/Pages together.
+  if (profileHandle !== lastProfileHandle) {
+    resetForNewProfile();
+    lastProfileHandle = profileHandle;
+  }
+  // Not on a recognized profile/Page route — refuse to accumulate anything. The network script
+  // still watches every /api/graphql/ response (query IDs rotate too often to target one path
+  // reliably), so this per-story ownership check is the actual enforcement point.
+  if (!profileHandle) return;
+
   for (const story of data.stories as FacebookStory[]) {
     if (!story?.post_id) continue;
+    if (!isAuthoredByProfile(story, profileHandle)) continue; // can't verify ownership — exclude
     capturedStories.set(story.post_id, mergeStory(capturedStories.get(story.post_id), story));
   }
 });
@@ -102,8 +199,18 @@ function extractCaption(story: FacebookStory): string {
 }
 
 function scan(): ScanResult {
+  const profileHandle = currentProfileHandle();
+  if (profileHandle !== lastProfileHandle) {
+    resetForNewProfile();
+    lastProfileHandle = profileHandle;
+  }
+
   const videos: ScrapedVideo[] = [];
-  const exclusionCounts = { share: 0, missingIds: 0, noVideoFound: 0, noUrlOrId: 0 };
+  const exclusionCounts = { share: 0, missingIds: 0, noVideoFound: 0, noUrlOrId: 0, notAuthor: 0 };
+
+  if (!profileHandle) {
+    return { supported: true, profileHandle: null, videos, totalCandidates: capturedStories.size, exclusionCounts };
+  }
 
   for (const story of capturedStories.values()) {
     // attached_story is populated when this Story is a share/repost of someone else's post —
@@ -114,6 +221,13 @@ function scan(): ScanResult {
     }
     if (!story.post_id || story.creation_time === undefined) {
       exclusionCounts.missingIds += 1;
+      continue;
+    }
+    // Re-verified here, not just trusted from capture time (capture already checked this, but a
+    // final pass guards against anything that slipped in some other way).
+    if (!isAuthoredByProfile(story, profileHandle)) {
+      exclusionCounts.notAuthor += 1;
+      if (isDevBuild()) console.warn("[ViralDRM] Facebook story excluded — author/page mismatch:", story.post_id, findActors(story));
       continue;
     }
 
@@ -140,7 +254,7 @@ function scan(): ScanResult {
     });
   }
 
-  return { supported: true, profileHandle: null, videos, totalCandidates: capturedStories.size, exclusionCounts };
+  return { supported: true, profileHandle, videos, totalCandidates: capturedStories.size, exclusionCounts };
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

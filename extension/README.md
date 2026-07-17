@@ -8,7 +8,10 @@ DRM web app. This is the piece the web app's "Pull recent videos" button was wai
 - **TikTok**: intercepts the internal API response TikTok's own page uses to render the "Videos"
   tab (not the separate "Reposts" tab, so reposts are excluded by construction), rather than
   reading embedded page data — TikTok no longer server-renders the video list at all, it's fetched
-  client-side. Gives real caption, publish date, and view count. **Refresh the TikTok tab after
+  client-side. Gives real caption, publish date, and view count. Every captured item's own
+  `author.uniqueId` is checked against the profile currently open, and captured state is cleared
+  whenever that changes — TikTok is a SPA, so browsing from one client's profile to another's
+  without a full page reload can't mix their videos together. **Refresh the TikTok tab after
   installing/updating the extension** so the interceptor is in place before the page's own first
   request fires — it won't see anything from before it loaded.
 - **X**: reads tweets from the DOM (no clean internal endpoint like TikTok/Facebook have) — but
@@ -17,21 +20,32 @@ DRM web app. This is the piece the web app's "Pull recent videos" button was wai
   only capturing whatever's on screen the instant you click Scan. Just scroll straight through and
   scan once at the end. Skips reposts and quote-tweet embeds, and only keeps tweets with a video.
   Caption and date are reliable; view count is best-effort (X doesn't always expose it in a stable
-  way).
+  way). The poller only captures while a recognized profile URL is open — elsewhere on x.com (home
+  feed, search, notifications, ...) it captures nothing at all, and each tweet's own author is
+  checked against that profile, both when it's first seen and again at scan time.
 - **Facebook**: intercepts the GraphQL response Facebook's page uses to render a profile/Page
   timeline (`timeline_list_feed_units`), same technique as TikTok. Gives real caption and publish
   date. View count isn't in this response at all (not a bug — Facebook's feed query just doesn't
   carry it), so it stays manual, same as X. Shares/reposts are excluded automatically via
   Facebook's own `attached_story` field, which is only populated when a Story wraps someone else's
-  post rather than being an original one. **Refresh the Facebook tab after installing/updating the
-  extension**, same reason as TikTok — the interceptor only sees requests made after it loads.
+  post rather than being an original one. Facebook doesn't expose one stable query to scope capture
+  to (query IDs rotate every deploy), so every `/api/graphql/` response is still watched, but each
+  captured Story's own `actors` field (whichever entity — Page or user — posted it) is checked
+  against the profile/Page currently open, both when it's first captured and again at scan time; a
+  Story whose ownership can't be determined is excluded rather than assumed. **Refresh the Facebook
+  tab after installing/updating the extension**, same reason as TikTok — the interceptor only sees
+  requests made after it loads.
 - **Instagram**: intercepts the GraphQL response Instagram's page uses to render a profile timeline
   (`xdt_api__v1__feed__user_timeline_graphql_connection`), same technique as Facebook, but searches
   the whole response for anything shaped like a Relay connection (`{ edges, page_info }`) rather
   than one fixed field name, since different query variants (initial load vs. pagination) are
   likely to use different names for it — the same gap that initially made Facebook miss
-  scroll-triggered content. Gives real caption and publish date. View count is present in the
-  schema but not populated by this query, so it stays manual. **Collab posts count as the
+  scroll-triggered content. Gives real caption and publish date. View count isn't in that query at
+  all, so after each scan the extension separately requests `/api/v1/media/<pk>/info/` for every
+  date-filtered video that doesn't have one yet (`play_count`/`ig_play_count`), up to 3 at a time,
+  cached per video so repeat scans don't re-request ones already answered. A failed lookup (network
+  error, rate limit, etc.) just leaves that video's count blank rather than blocking the import —
+  it isn't retried automatically, only on a later scan. **Collab posts count as the
   profile's own** if the profile is listed as either the primary `user` or a coauthor — Instagram
   posts co-authored between two accounts show up on both profiles' timelines. Videos inside
   carousels (mixed photo/video posts) are extracted too, but share the parent post's single
@@ -39,6 +53,19 @@ DRM web app. This is the piece the web app's "Pull recent videos" button was wai
   carousel contains more than one video, only the first one sent will actually get stored (the
   rest will look like duplicates of it to the dedup check). **Refresh the Instagram tab after
   installing/updating the extension**, same reason as TikTok/Facebook.
+- **YouTube**: unlike every other platform, this isn't scraped from a page at all — it's a pure
+  server-side call to the official YouTube Data API (`channels.list` → `playlistItems.list` →
+  `videos.list`), triggered by selecting a client's YouTube account and clicking "Scan channel",
+  regardless of what tab happens to be open. Every video is classified as a **Short**, **Live**, or
+  **Regular upload** (in that precedence — a livestream replay stays Live even if it's short and
+  vertical) and shown in three separate, counted groups with their own select-all. Live detection
+  uses only official API fields (`liveBroadcastContent`, `liveStreamingDetails`), never the title.
+  Shorts detection has no official API field, so it's a separate server-side lookup of the
+  channel's own `/shorts` tab (confirmed video IDs only) — this only covers a channel's ~48-50 most
+  recent Shorts, so a date range reaching further back may mislabel an older Short as a regular
+  upload; the scan summary's "Classification" line says so explicitly rather than claiming a
+  complete split it can't back up. Requires a `YOUTUBE_API_KEY` Worker secret (same one used by the
+  web app's manual "Add Video" metadata autofill).
 - Nothing is sent automatically. Every scan populates a review list with checkboxes — you pick
   what actually gets sent.
 - The UI is a **side panel**, not a popup — it stays open and docked while you scroll and interact

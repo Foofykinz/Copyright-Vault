@@ -16,6 +16,10 @@ export class NotFoundError extends Error {}
 
 export class UnauthorizedError extends Error {}
 
+/** A downstream API (e.g. YouTube) failed or is misconfigured — distinct from a bad request from
+ * our own caller (ValidationError) since the fix, if any, is on the upstream/config side. */
+export class UpstreamError extends Error {}
+
 export function errorResponse(err: unknown): Response {
   if (err instanceof ValidationError) {
     return json({ error: err.message, ...(err.details ? { details: err.details } : {}) }, { status: 400 });
@@ -25,6 +29,9 @@ export function errorResponse(err: unknown): Response {
   }
   if (err instanceof UnauthorizedError) {
     return json({ error: err.message || "Unauthorized." }, { status: 401 });
+  }
+  if (err instanceof UpstreamError) {
+    return json({ error: err.message || "An upstream service failed." }, { status: 502 });
   }
   console.error(err);
   return json({ error: "Unexpected server error." }, { status: 500 });

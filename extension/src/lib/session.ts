@@ -1,4 +1,5 @@
 import type { ScrapedVideo } from "./scraped";
+import type { YouTubeClassificationStatus } from "../../../shared/types";
 
 export type DateMode = "sincePull" | "range";
 
@@ -16,6 +17,9 @@ export interface SessionState {
   dateMode: DateMode;
   rangeStart: string;
   rangeEnd: string;
+  /** Set only after a YouTube scan; null for every other platform / before a first YouTube scan. */
+  youtubeChannelTitle: string | null;
+  youtubeClassificationStatus: YouTubeClassificationStatus | null;
 }
 
 const STORAGE_KEY = "viralDrmSession";
@@ -27,6 +31,8 @@ const EMPTY_SESSION: SessionState = {
   dateMode: "sincePull",
   rangeStart: "",
   rangeEnd: "",
+  youtubeChannelTitle: null,
+  youtubeClassificationStatus: null,
 };
 
 export async function getSession(): Promise<SessionState> {

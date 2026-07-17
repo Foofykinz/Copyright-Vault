@@ -4,6 +4,8 @@ import type {
   ExtensionVideoImportResult,
   SocialAccount,
   VideoWithDeadline,
+  YouTubeChannelVideosRequest,
+  YouTubeChannelVideosResponse,
 } from "../../../shared/types";
 import type { ExtensionConfig } from "./storage";
 
@@ -35,6 +37,11 @@ export const extensionApi = {
     ),
   importVideo: (config: ExtensionConfig, input: ExtensionVideoImportInput) =>
     request<ExtensionVideoImportResult>(config, "/api/extension/videos", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  scanYouTubeChannel: (config: ExtensionConfig, input: YouTubeChannelVideosRequest) =>
+    request<YouTubeChannelVideosResponse>(config, "/api/youtube/channel-videos", {
       method: "POST",
       body: JSON.stringify(input),
     }),

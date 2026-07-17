@@ -14,6 +14,7 @@ import * as combinationFolderVideos from "../functions/api/combination-folders/b
 import * as combinationFolderVideoById from "../functions/api/combination-folders/byId/videos/byVideoId";
 import * as extensionVideos from "../functions/api/extension/videos";
 import * as metadataLookup from "../functions/api/metadata/index";
+import * as youtubeChannelVideos from "../functions/api/youtube/channel-videos";
 
 export interface Env extends ApiEnv {
   ASSETS: Fetcher;
@@ -48,6 +49,7 @@ register("/api/combination-folders/:id/videos", combinationFolderVideos);
 register("/api/combination-folders/:id/videos/:videoId", combinationFolderVideoById);
 register("/api/extension/videos", extensionVideos);
 register("/api/metadata", metadataLookup);
+register("/api/youtube/channel-videos", youtubeChannelVideos);
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {

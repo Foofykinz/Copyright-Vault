@@ -1,5 +1,5 @@
 import type { ScanResult, ScrapedVideo } from "../lib/scraped";
-import { SCAN_MESSAGE } from "../lib/scraped";
+import { isDevBuild, SCAN_MESSAGE } from "../lib/scraped";
 import { truncateWords } from "../../../shared/format";
 
 /**
@@ -64,6 +64,11 @@ function captureVisibleTweets(): void {
     resetForNewProfile();
     lastProfileHandle = profileHandle;
   }
+  // This poller runs on all of x.com, not just profile pages (home feed, search, notifications,
+  // individual status permalinks, ...). Without this, anything visible there would get captured
+  // with no author to check it against. Refuse to capture anything at all off a recognized profile
+  // route, rather than silently widening scope to "whatever's on screen."
+  if (!profileHandle) return;
 
   const articles = Array.from(document.querySelectorAll<HTMLElement>('article[data-testid="tweet"]'));
 
@@ -109,8 +114,11 @@ function captureVisibleTweets(): void {
       continue;
     }
 
-    if (profileHandle && author.toLowerCase() !== profileHandle) {
+    // profileHandle is guaranteed non-null here (the early return above already excluded
+    // everything otherwise) — never fall back to treating an unmatched author as this profile's.
+    if (author.toLowerCase() !== profileHandle) {
       countExclusionOnce("authorMismatch");
+      if (isDevBuild()) console.warn("[ViralDRM] X tweet excluded — author mismatch:", statusId, author, "expected", profileHandle);
       continue;
     }
 
@@ -170,15 +178,33 @@ document.addEventListener(
 captureVisibleTweets();
 
 function scan(): ScanResult {
-  captureVisibleTweets(); // catch anything since the last poll tick
+  captureVisibleTweets(); // catch anything since the last poll tick (also applies the gating above)
+
+  const profileHandle = lastProfileHandle;
+  if (!profileHandle) {
+    return { supported: true, profileHandle: null, videos: [], totalCandidates: 0, exclusionCounts: { ...exclusionTotals } };
+  }
+
+  // Final validation pass: capturedVideos should already be author-scoped (captureVisibleTweets
+  // only ever inserts matching-author tweets), but re-verify from each video's own URL rather than
+  // just trusting the map, so a scan never returns something that slipped in some other way.
+  let lateMismatches = 0;
+  const videos = [...capturedVideos.values()].filter((v) => {
+    const author = /^https:\/\/x\.com\/([^/]+)\/status\//.exec(v.videoUrl)?.[1]?.toLowerCase();
+    if (author === profileHandle) return true;
+    lateMismatches += 1;
+    if (isDevBuild()) console.warn("[ViralDRM] X video excluded at scan-time — author mismatch:", v.key);
+    return false;
+  });
+
   const totalCandidates =
     capturedVideos.size + exclusionTotals.repost + exclusionTotals.noVideo + exclusionTotals.authorMismatch;
   return {
     supported: true,
-    profileHandle: lastProfileHandle,
-    videos: [...capturedVideos.values()],
+    profileHandle,
+    videos,
     totalCandidates,
-    exclusionCounts: { ...exclusionTotals },
+    exclusionCounts: { ...exclusionTotals, authorMismatch: exclusionTotals.authorMismatch + lateMismatches },
   };
 }
 

@@ -25,6 +25,19 @@ export function truncateWords(text: string, maxWords = 12): string {
   return `${words.slice(0, maxWords).join(" ")}…`;
 }
 
+const ILLEGAL_FILENAME_CHARS = /[\\/:*?"<>|]/g;
+
+function sanitizeForFilename(text: string): string {
+  return text.replace(ILLEGAL_FILENAME_CHARS, "").replace(/\s+/g, " ").trim();
+}
+
+/** Suggests a "Client - Date - Title" filename (no extension), e.g.
+ * "Reed Timmer - 2026-07-15 - Storm chase footage". */
+export function suggestFilename(clientName: string, publicationDateIso: string, title: string): string {
+  const date = publicationDateIso.slice(0, 10);
+  return [sanitizeForFilename(clientName), date, sanitizeForFilename(title)].filter(Boolean).join(" - ");
+}
+
 export const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",

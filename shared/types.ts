@@ -30,7 +30,16 @@ export interface SocialAccount {
   lastPullAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** YouTube only — cached after the first successful channel resolution so later scans don't
+   * need to re-resolve the channel URL. Null for every other platform, and null for a YouTube
+   * account that hasn't been scanned yet. */
+  youtubeChannelId?: string | null;
+  youtubeUploadsPlaylistId?: string | null;
+  youtubeHandle?: string | null;
 }
+
+export type YouTubeCategory = "short" | "live" | "upload";
+export type YouTubeLiveStatus = "upcoming" | "live" | "completed";
 
 export interface Video {
   id: string;
@@ -47,6 +56,8 @@ export interface Video {
   collectedAt: string;
   createdAt: string;
   updatedAt: string;
+  /** YouTube only — null for every other platform. */
+  youtubeCategory: YouTubeCategory | null;
 }
 
 /** Video with server-computed, non-persisted deadline fields. */
@@ -160,6 +171,9 @@ export interface ExtensionVideoImportInput {
   caption?: string | null;
   viewCount?: number;
   viewCountCheckedAt?: string;
+  thumbnailUrl?: string;
+  /** YouTube only — ignored for every other platform. */
+  youtubeCategory?: YouTubeCategory;
 }
 
 /** Response for POST /api/extension/videos. `duplicate` is true when videoUrl already existed for
@@ -183,4 +197,55 @@ export interface VideoMetadataResult {
   thumbnailUrl?: string;
   /** Set when a field could not be fetched (e.g. platform doesn't publicly expose it). */
   warning?: string;
+}
+
+// ---- YouTube channel scan (POST /api/youtube/channel-videos) ----
+
+export interface YouTubeChannelVideosRequest {
+  clientId: string;
+  accountId: string;
+  /** A channel URL/handle to resolve. Omitted once the account already has a cached channelId. */
+  channelUrl?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface YouTubeScannedVideo {
+  videoId: string;
+  videoUrl: string;
+  title: string;
+  /** Video description, truncated the same way other platforms' captions are. */
+  caption: string;
+  publicationDate: string;
+  viewCount: number | null;
+  thumbnailUrl: string | null;
+  channelTitle: string;
+  channelId: string;
+  channelUrl: string;
+  durationSeconds: number | null;
+  category: YouTubeCategory;
+  liveStatus?: YouTubeLiveStatus;
+  scheduledStartTime?: string;
+  actualStartTime?: string;
+  actualEndTime?: string;
+  concurrentViewers?: number;
+}
+
+/** How trustworthy the short/live/upload split is for this scan. "incomplete_older_shorts" means
+ * live retrieval succeeded but the confirmed-Shorts lookup only covers a channel's most recent
+ * batch (~48-50) — content older than that may be a Short mislabeled as a regular upload.
+ * "shorts_lookup_failed" means the Shorts lookup itself errored — every video was still retrieved,
+ * just conservatively bucketed as "upload" pending a re-scan. */
+export type YouTubeClassificationStatus = "complete" | "incomplete_older_shorts" | "shorts_lookup_failed";
+
+export interface YouTubeChannelVideosResponse {
+  channel: {
+    channelId: string;
+    title: string;
+    handle: string | null;
+    uploadsPlaylistId: string;
+  };
+  videos: YouTubeScannedVideo[];
+  counts: { shorts: number; lives: number; uploads: number };
+  classificationStatus: YouTubeClassificationStatus;
 }

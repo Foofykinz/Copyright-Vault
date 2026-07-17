@@ -1,5 +1,7 @@
-import { PLATFORMS, type Platform } from "../../shared/types";
+import { PLATFORMS, type Platform, type YouTubeCategory } from "../../shared/types";
 import { ValidationError } from "./http";
+
+const YOUTUBE_CATEGORIES: YouTubeCategory[] = ["short", "live", "upload"];
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$/;
 
@@ -64,6 +66,16 @@ export function optionalNonNegativeInt(value: unknown, field: string, fallback =
     throw new ValidationError(`${field} must be a non-negative integer.`, { [field]: "invalid" });
   }
   return num;
+}
+
+export function optionalYoutubeCategory(value: unknown): YouTubeCategory | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string" || !YOUTUBE_CATEGORIES.includes(value as YouTubeCategory)) {
+    throw new ValidationError(`youtubeCategory must be one of: ${YOUTUBE_CATEGORIES.join(", ")}.`, {
+      youtubeCategory: "invalid",
+    });
+  }
+  return value as YouTubeCategory;
 }
 
 export function requireStringArray(value: unknown, field: string): string[] {

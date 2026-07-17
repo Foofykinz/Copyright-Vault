@@ -8,8 +8,14 @@
  * like a Relay connection ({ edges: [...], page_info: ... }) anywhere in the response and treats
  * its edges[].node entries as candidate posts, so it isn't tied to one specific query's field name.
  *
- * Isolated-world content scripts can't see MAIN-world globals directly, so captured nodes are
- * relayed to content/instagram.ts via window.postMessage, which both worlds share.
+ * Also captures the `x-ig-app-id` header Instagram's own code attaches to its API requests. The
+ * timeline query never carries a populated view count (confirmed via live capture), so getting it
+ * requires a separate authenticated request to /api/v1/media/<pk>/info/ — done from the isolated
+ * world (content/instagram.ts) rather than here, but it needs this header to be accepted, and
+ * there's no other way to learn its value than watching a real request the page makes.
+ *
+ * Isolated-world content scripts can't see MAIN-world globals directly, so captured nodes (and the
+ * app-id header) are relayed to content/instagram.ts via window.postMessage, which both worlds share.
  */
 (function () {
   const MESSAGE_SOURCE = "viral-drm-instagram";
@@ -19,31 +25,20 @@
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const debugConnections: any[] = ((window as any).__viralDrmIgRawConnections ??= []); // eslint-disable-line @typescript-eslint/no-explicit-any
 
-  // TEMPORARY DIAGNOSTIC: the confirmed profile-timeline connection never populates view_count,
-  // so this widens capture to any instagram.com/api/ response (not just /graphql/query, in case
-  // opening an individual Reel hits an older REST-style endpoint) and stashes anything containing
-  // a *populated* view/play count, regardless of whether it's shaped like a Relay connection.
-  // Remove once we know where real view counts live (or confirm they don't exist anywhere public).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const viewCountCandidates: any[] = ((window as any).__viralDrmIgViewCountDebug ??= []); // eslint-disable-line @typescript-eslint/no-explicit-any
+  let capturedAppId: string | null = null;
 
-  function looksLikePopulatedViewCount(text: string): boolean {
-    return /"(view_count|play_count)":\s*[1-9]\d*/.test(text);
-  }
-
-  function maybeStashViewCountCandidate(url: string, text: string): void {
-    if (!looksLikePopulatedViewCount(text)) return;
+  function captureAppId(headers: HeadersInit | undefined): void {
+    if (!headers || capturedAppId) return;
     try {
-      viewCountCandidates.push({ url, json: JSON.parse(text) });
+      const h = headers instanceof Headers ? headers : new Headers(headers);
+      const appId = h.get("x-ig-app-id");
+      if (appId) {
+        capturedAppId = appId;
+        window.postMessage({ source: MESSAGE_SOURCE, appId }, "*");
+      }
     } catch {
-      viewCountCandidates.push({ url, raw: text.slice(0, 5000) });
+      // best-effort — a malformed headers value just means we try again on the next request
     }
-    // eslint-disable-next-line no-console
-    console.log(
-      `%c[ViralDRM IG view-count debug] populated view/play count found in ${url}`,
-      "color:#ffd60a;font-weight:bold",
-      `— total candidates: ${viewCountCandidates.length}. Inspect via window.__viralDrmIgViewCountDebug`
-    );
   }
 
   function postNodes(nodes: unknown[]): void {
@@ -88,16 +83,10 @@
   }
 
   function isTrackedUrl(url: string): boolean {
-    // Widened from just /graphql/query so the view-count diagnostic (below) can also see
-    // Instagram's older REST-style /api/v1/ endpoints, in case an individual Reel view uses one
-    // of those instead. The real connection-extraction logic no-ops harmlessly on anything that
-    // isn't shaped like a Relay connection, so this is safe to broaden.
-    return url.includes("/graphql/query") || url.includes("instagram.com/api/v1/");
+    return url.includes("/graphql/query");
   }
 
-  function handleResponseText(url: string, text: string): void {
-    maybeStashViewCountCandidate(url, text);
-
+  function handleResponseText(text: string): void {
     // Instagram, like Facebook, can return newline-delimited JSON for some multipart responses.
     let json: unknown;
     try {
@@ -118,6 +107,12 @@
 
   const originalFetch = window.fetch.bind(window);
   window.fetch = (async (...args: Parameters<typeof fetch>) => {
+    try {
+      const init = args[1];
+      captureAppId(init?.headers);
+    } catch {
+      // best-effort
+    }
     const response = await originalFetch(...args);
     try {
       const input = args[0];
@@ -126,7 +121,7 @@
         response
           .clone()
           .text()
-          .then((text) => handleResponseText(url, text))
+          .then((text) => handleResponseText(text))
           .catch(() => {});
       }
     } catch {
@@ -147,8 +142,17 @@
       return (originalOpen as any)(method, url, ...rest);
     }) as typeof xhr.open;
 
+    const originalSetRequestHeader = xhr.setRequestHeader.bind(xhr);
+    xhr.setRequestHeader = ((name: string, value: string) => {
+      if (!capturedAppId && name.toLowerCase() === "x-ig-app-id" && value) {
+        capturedAppId = value;
+        window.postMessage({ source: MESSAGE_SOURCE, appId: value }, "*");
+      }
+      return originalSetRequestHeader(name, value);
+    }) as typeof xhr.setRequestHeader;
+
     xhr.addEventListener("load", () => {
-      if (isTrackedUrl(trackedUrl)) handleResponseText(trackedUrl, xhr.responseText);
+      if (isTrackedUrl(trackedUrl)) handleResponseText(xhr.responseText);
     });
 
     return xhr;

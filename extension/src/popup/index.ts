@@ -1,9 +1,24 @@
 import { getConfig, updateConfig } from "../lib/storage";
 import { getSession, updateSession, type DateMode } from "../lib/session";
 import { extensionApi } from "../lib/api";
-import { SCAN_MESSAGE, type ScanResult, type ScrapedVideo } from "../lib/scraped";
-import type { Client, ExtensionVideoImportInput, Platform, SocialAccount } from "../../../shared/types";
+import { ENRICH_VIEW_COUNTS_MESSAGE, SCAN_MESSAGE, type EnrichViewCountsResult, type ScanResult, type ScrapedVideo } from "../lib/scraped";
+import type { Client, ExtensionVideoImportInput, Platform, SocialAccount, YouTubeClassificationStatus } from "../../../shared/types";
 import { PLATFORM_LABELS } from "../../../shared/types";
+import { suggestFilename } from "../../../shared/format";
+
+const YOUTUBE_CATEGORY_LABELS: Record<"short" | "live" | "upload", string> = {
+  short: "SHORTS",
+  live: "LIVES",
+  upload: "REGULAR UPLOADS",
+};
+
+// Every non-"complete" status must read as a caveat, never as "Complete" — videos stay selectable
+// and importable in all three cases; this only affects how the split is described, not what's usable.
+const YOUTUBE_CLASSIFICATION_LABELS: Record<YouTubeClassificationStatus, string> = {
+  complete: "Complete",
+  incomplete_older_shorts: "Older Shorts may appear under Regular Uploads",
+  shorts_lookup_failed: "Shorts lookup failed; some Shorts may appear under Regular Uploads",
+};
 
 const app = document.getElementById("app");
 if (!app) throw new Error("Popup root element not found.");
@@ -30,6 +45,8 @@ interface State {
   error: string | null;
   showSettings: boolean;
   busy: boolean;
+  /** Set only after a YouTube scan; drives the compact scan summary. Null for every other platform. */
+  youtubeScan: { channelTitle: string; classificationStatus: YouTubeClassificationStatus } | null;
 }
 
 const state: State = {
@@ -53,6 +70,7 @@ const state: State = {
   error: null,
   showSettings: false,
   busy: false,
+  youtubeScan: null,
 };
 
 function detectTabPlatform(url: string | undefined): Platform | null {
@@ -169,7 +187,21 @@ function persistSession(): void {
     dateMode: state.dateMode,
     rangeStart: state.rangeStart,
     rangeEnd: state.rangeEnd,
+    youtubeChannelTitle: state.youtubeScan?.channelTitle ?? null,
+    youtubeClassificationStatus: state.youtubeScan?.classificationStatus ?? null,
   });
+}
+
+/** Drops any in-progress scan results/selection — used whenever the selected social account
+ * changes, so results scanned for one client/account can never remain attached to another after
+ * switching. (YouTube scanning is account-driven rather than tab-driven, so nothing else would
+ * otherwise clear this the way a tab navigation does for the other platforms.) */
+function clearScanState(): void {
+  state.scannedVideos.clear();
+  state.selectedKeys.clear();
+  state.expandedKeys.clear();
+  state.youtubeScan = null;
+  state.status = null;
 }
 
 async function init(): Promise<void> {
@@ -184,6 +216,9 @@ async function init(): Promise<void> {
   state.dateMode = session.dateMode;
   state.rangeStart = session.rangeStart;
   state.rangeEnd = session.rangeEnd;
+  state.youtubeScan = session.youtubeChannelTitle
+    ? { channelTitle: session.youtubeChannelTitle, classificationStatus: session.youtubeClassificationStatus ?? "complete" }
+    : null;
 
   const tab = await activeTab();
   state.tabPlatform = detectTabPlatform(tab?.url);
@@ -225,9 +260,106 @@ async function saveSettings(apiBaseUrl: string, apiToken: string): Promise<void>
   render();
 }
 
+/** Only Instagram's scan is missing view counts (its profile-timeline query doesn't carry them) —
+ * fetching them is a separate per-video request, so it's done as a follow-up here rather than as
+ * part of scan() itself. Scoped to the date-filtered (visible) set, not everything ever scanned,
+ * so switching to a narrower date range doesn't pay for counts on videos that won't be sent. */
+async function enrichInstagramViewCounts(tabId: number): Promise<void> {
+  const keys = visibleVideos()
+    .filter((v) => v.viewCount === null)
+    .map((v) => v.key);
+  if (keys.length === 0) return;
+  try {
+    const counts = (await chrome.tabs.sendMessage(tabId, { type: ENRICH_VIEW_COUNTS_MESSAGE, keys })) as
+      | EnrichViewCountsResult
+      | undefined;
+    if (!counts) return;
+    for (const [key, count] of Object.entries(counts)) {
+      if (count === null) continue;
+      const video = state.scannedVideos.get(key);
+      if (video) state.scannedVideos.set(key, { ...video, viewCount: count });
+    }
+    persistSession();
+  } catch {
+    // Non-fatal — counts stay null and the video is still importable, just without a count.
+  }
+}
+
+/** YouTube has no page for a content script to scrape — retrieval is entirely server-side via the
+ * official Data API, so unlike every other platform this scan is driven by the selected client +
+ * social account rather than whatever tab happens to be active. */
+async function scanYouTubeAccount(account: SocialAccount): Promise<void> {
+  const startDate = state.dateMode === "range" ? state.rangeStart || undefined : account.lastPullAt ? account.lastPullAt.slice(0, 10) : undefined;
+  const endDate = state.dateMode === "range" ? state.rangeEnd || undefined : undefined;
+
+  try {
+    const response = await extensionApi.scanYouTubeChannel(
+      { apiBaseUrl: state.apiBaseUrl, apiToken: state.apiToken },
+      {
+        clientId: account.clientId,
+        accountId: account.id,
+        channelUrl: account.profileUrl ?? undefined,
+        startDate,
+        endDate,
+      }
+    );
+
+    let added = 0;
+    let skippedDuplicates = 0;
+    for (const v of response.videos) {
+      const key = `youtube:${v.videoId}`;
+      if (state.existingVideoUrls.has(v.videoUrl)) {
+        skippedDuplicates += 1;
+        continue;
+      }
+      if (!state.scannedVideos.has(key)) added += 1;
+      state.scannedVideos.set(key, {
+        key,
+        videoUrl: v.videoUrl,
+        publicationDate: v.publicationDate,
+        caption: v.caption,
+        viewCount: v.viewCount,
+        title: v.title,
+        thumbnailUrl: v.thumbnailUrl,
+        youtubeCategory: v.category,
+        channelTitle: v.channelTitle,
+        channelId: v.channelId,
+        channelUrl: v.channelUrl,
+        durationSeconds: v.durationSeconds,
+        liveStatus: v.liveStatus,
+        scheduledStartTime: v.scheduledStartTime,
+        actualStartTime: v.actualStartTime,
+        actualEndTime: v.actualEndTime,
+        concurrentViewers: v.concurrentViewers,
+      });
+      state.selectedKeys.add(key);
+    }
+
+    state.youtubeScan = { channelTitle: response.channel.title, classificationStatus: response.classificationStatus };
+    persistSession();
+
+    const visibleCount = visibleVideos().length;
+    state.status =
+      `Scan found ${response.videos.length} video${response.videos.length === 1 ? "" : "s"} ` +
+      `(${response.counts.shorts} Shorts, ${response.counts.lives} Lives, ${response.counts.uploads} regular uploads)` +
+      (skippedDuplicates > 0 ? `, ${skippedDuplicates} already imported (skipped)` : "") +
+      `. ${added} new this scan; ${visibleCount} shown under the current date filter.`;
+  } catch (err) {
+    state.error = err instanceof Error ? err.message : "YouTube scan failed.";
+  }
+  render();
+}
+
 async function scanActiveTab(): Promise<void> {
   state.status = null;
   state.error = null;
+
+  const selectedAccount = state.socialAccounts.find((a) => a.id === state.selectedSocialAccountId);
+  if (selectedAccount?.platform === "youtube") {
+    await scanYouTubeAccount(selectedAccount);
+    return;
+  }
+
   const tab = await activeTab();
   state.tabPlatform = detectTabPlatform(tab?.url);
   if (tab?.url !== state.tabUrl) state.mismatchAcknowledged = false;
@@ -288,6 +420,10 @@ async function scanActiveTab(): Promise<void> {
         ? ` ${hiddenByFilter} captured video${hiddenByFilter === 1 ? " is" : "s are"} hidden by the date filter — switch to Custom date range to see ${hiddenByFilter === 1 ? "it" : "them"}.`
         : " Scroll down and scan again for more.") +
       exclusionNote;
+
+    if (state.tabPlatform === "instagram") {
+      await enrichInstagramViewCounts(tab.id);
+    }
   } catch {
     state.error = "Open a TikTok, X, Facebook, or Instagram profile page, then try scanning again.";
   }
@@ -307,13 +443,15 @@ async function sendSelected(): Promise<void> {
   // platform/socialAccountId sent to the server come entirely from this selection, never from the
   // scan result itself. A platform-type mismatch here is never correct, unlike the softer
   // client-mismatch check below which allows a deliberate override.
-  if (state.tabPlatform && account.platform !== state.tabPlatform) {
+  // Both checks are tab-URL-based and don't apply to YouTube, which is scanned by account, not by
+  // whatever tab happens to be active.
+  if (account.platform !== "youtube" && state.tabPlatform && account.platform !== state.tabPlatform) {
     state.error = `Selected account is ${PLATFORM_LABELS[account.platform]}, but this page is ${PLATFORM_LABELS[state.tabPlatform]}. Choose an account of the matching platform before sending.`;
     render();
     return;
   }
 
-  if (profileLooksMismatched(account.profileUrl, state.tabUrl) && !state.mismatchAcknowledged) {
+  if (account.platform !== "youtube" && profileLooksMismatched(account.profileUrl, state.tabUrl) && !state.mismatchAcknowledged) {
     state.error = "This page doesn't look like it matches the selected social account. Check the box above to confirm before sending.";
     render();
     return;
@@ -343,6 +481,8 @@ async function sendSelected(): Promise<void> {
       publicationDate: video.publicationDate,
       caption: video.caption || null,
       viewCount: video.viewCount ?? undefined,
+      thumbnailUrl: video.thumbnailUrl ?? undefined,
+      youtubeCategory: video.youtubeCategory,
     };
     try {
       const result = await extensionApi.importVideo({ apiBaseUrl: state.apiBaseUrl, apiToken: state.apiToken }, input);
@@ -425,9 +565,10 @@ function renderVideoRow(video: ScrapedVideo): HTMLElement {
   });
 
   const expanded = state.expandedKeys.has(video.key);
+  const primaryText = video.title || video.caption || "(no caption)";
   const caption = el("div", {
     className: `caption${expanded ? " expanded" : ""}`,
-    textContent: video.caption || "(no caption)",
+    textContent: primaryText,
     title: expanded ? "Click to collapse" : "Click to show full caption",
   });
   caption.addEventListener("click", () => {
@@ -436,13 +577,21 @@ function renderVideoRow(video: ScrapedVideo): HTMLElement {
     render();
   });
 
-  const meta = el("div", { className: "meta" }, [
+  const metaChildren: (Node | string)[] = [
     el("div", {
       className: "sub",
       textContent: `${new Date(video.publicationDate).toLocaleDateString()} · ${video.viewCount !== null ? `${video.viewCount.toLocaleString()} views` : "views unknown"}`,
     }),
     caption,
-  ]);
+  ];
+  if (video.youtubeCategory) {
+    // Built from video.publicationDate as returned by the API — never a reconstructed/reformatted
+    // date — via suggestFilename's own .slice(0, 10), same as the date-filter comparisons.
+    const clientName = state.clients.find((c) => c.id === state.selectedClientId)?.name ?? "";
+    const filename = suggestFilename(clientName, video.publicationDate, video.title || video.caption || "");
+    metaChildren.push(el("div", { className: "hint", textContent: `Suggested filename: ${filename}` }));
+  }
+  const meta = el("div", { className: "meta" }, metaChildren);
 
   return el("div", { className: "video-row" }, [checkbox, meta]);
 }
@@ -493,6 +642,78 @@ function renderDateFilterField(): HTMLElement {
   return el("div", { className: "field" }, children);
 }
 
+/** Flat list for every existing platform (unchanged from before) — only videos carrying a
+ * youtubeCategory get split into the three labeled, counted, select-all-able groups. */
+function renderVideoList(visible: ScrapedVideo[], totalCaptured: number): HTMLElement {
+  const hasYoutubeCategories = visible.some((v) => v.youtubeCategory);
+  if (!hasYoutubeCategories) {
+    return el(
+      "div",
+      { className: "video-list" },
+      visible.length > 0
+        ? visible.map(renderVideoRow)
+        : [
+            el("div", {
+              className: "hint",
+              textContent: totalCaptured > 0 ? "No scanned videos match the current date filter." : "No videos scanned yet.",
+            }),
+          ]
+    );
+  }
+
+  const groups: { category: "short" | "live" | "upload"; videos: ScrapedVideo[] }[] = [
+    { category: "short", videos: visible.filter((v) => v.youtubeCategory === "short") },
+    { category: "live", videos: visible.filter((v) => v.youtubeCategory === "live") },
+    { category: "upload", videos: visible.filter((v) => v.youtubeCategory !== "short" && v.youtubeCategory !== "live") },
+  ];
+
+  const container = el("div", { className: "video-list" });
+  for (const group of groups) {
+    if (group.videos.length === 0) continue;
+
+    const allSelected = group.videos.every((v) => state.selectedKeys.has(v.key));
+    const selectAll = el("input", { type: "checkbox", checked: allSelected, title: "Select all in this group" });
+    selectAll.addEventListener("change", () => {
+      for (const v of group.videos) {
+        if (selectAll.checked) state.selectedKeys.add(v.key);
+        else state.selectedKeys.delete(v.key);
+      }
+      persistSession();
+      render();
+    });
+
+    const header = el("div", { className: "video-group-header flex-row" }, [
+      selectAll,
+      el("strong", { textContent: YOUTUBE_CATEGORY_LABELS[group.category] }),
+      el("span", { className: "hint", textContent: `(${group.videos.length})` }),
+    ]);
+
+    container.append(header, ...group.videos.map(renderVideoRow));
+  }
+  return container;
+}
+
+function renderYoutubeSummary(visible: ScrapedVideo[]): HTMLElement | null {
+  if (!state.youtubeScan) return null;
+
+  const shorts = visible.filter((v) => v.youtubeCategory === "short").length;
+  const lives = visible.filter((v) => v.youtubeCategory === "live").length;
+  const uploads = visible.filter((v) => v.youtubeCategory === "upload").length;
+  const rangeLabel =
+    state.dateMode === "range"
+      ? state.rangeStart && state.rangeEnd
+        ? `${state.rangeStart} to ${state.rangeEnd}`
+        : "custom range (incomplete)"
+      : "since last pull";
+
+  return el("div", { className: "hint youtube-summary" }, [
+    el("div", { textContent: `Channel: ${state.youtubeScan.channelTitle}` }),
+    el("div", { textContent: `Date range: ${rangeLabel}` }),
+    el("div", { textContent: `Total: ${visible.length}  ·  Shorts: ${shorts}  ·  Lives: ${lives}  ·  Regular uploads: ${uploads}` }),
+    el("div", { textContent: `Classification: ${YOUTUBE_CLASSIFICATION_LABELS[state.youtubeScan.classificationStatus]}` }),
+  ]);
+}
+
 function renderMainView(): HTMLElement {
   const container = el("div");
 
@@ -505,7 +726,11 @@ function renderMainView(): HTMLElement {
     container.appendChild(el("div", { className: "hint", textContent: `Detected platform: ${PLATFORM_LABELS[state.tabPlatform]}` }));
   } else {
     container.appendChild(
-      el("div", { className: "hint", textContent: "Navigate to a TikTok, X, Facebook, or Instagram profile to scan for videos." })
+      el("div", {
+        className: "hint",
+        textContent:
+          "Navigate to a TikTok, X, Facebook, or Instagram profile to scan for videos — or select a YouTube channel below (no page needed).",
+      })
     );
   }
 
@@ -522,6 +747,7 @@ function renderMainView(): HTMLElement {
     state.selectedClientId = clientSelect.value;
     state.selectedSocialAccountId = "";
     state.mismatchAcknowledged = false;
+    clearScanState();
     persistSession();
     void loadSocialAccounts().then(() => {
       persistSession();
@@ -529,8 +755,11 @@ function renderMainView(): HTMLElement {
     });
   });
 
+  // YouTube accounts are always shown alongside whatever matches the active tab — scanning them
+  // never depends on which tab is focused, so they shouldn't be hidden just because an unrelated
+  // (or no) tab-matched platform happens to be active.
   const filteredAccounts = state.tabPlatform
-    ? state.socialAccounts.filter((a) => a.platform === state.tabPlatform)
+    ? state.socialAccounts.filter((a) => a.platform === state.tabPlatform || a.platform === "youtube")
     : state.socialAccounts;
   const accountsToShow = filteredAccounts.length > 0 ? filteredAccounts : state.socialAccounts;
 
@@ -550,6 +779,7 @@ function renderMainView(): HTMLElement {
   ]);
   const accountSelect = accountField.querySelector("select") as HTMLSelectElement;
   accountSelect.addEventListener("change", () => {
+    if (accountSelect.value !== state.selectedSocialAccountId) clearScanState();
     state.selectedSocialAccountId = accountSelect.value;
     state.mismatchAcknowledged = false;
     persistSession();
@@ -563,7 +793,10 @@ function renderMainView(): HTMLElement {
   }
 
   const selectedAccount = state.socialAccounts.find((a) => a.id === state.selectedSocialAccountId) ?? null;
-  const platformMismatch = Boolean(selectedAccount && state.tabPlatform && selectedAccount.platform !== state.tabPlatform);
+  // Tab-vs-account matching is meaningless for YouTube — it's scanned by account, not by page.
+  const platformMismatch = Boolean(
+    selectedAccount && selectedAccount.platform !== "youtube" && state.tabPlatform && selectedAccount.platform !== state.tabPlatform
+  );
   const platformMismatchWarning = platformMismatch
     ? el("div", {
         className: "error",
@@ -571,7 +804,7 @@ function renderMainView(): HTMLElement {
       })
     : null;
   const mismatchWarning =
-    selectedAccount && profileLooksMismatched(selectedAccount.profileUrl, state.tabUrl)
+    selectedAccount && selectedAccount.platform !== "youtube" && profileLooksMismatched(selectedAccount.profileUrl, state.tabUrl)
       ? (() => {
           const checkbox = el("input", { type: "checkbox", checked: state.mismatchAcknowledged });
           checkbox.addEventListener("change", () => {
@@ -585,23 +818,13 @@ function renderMainView(): HTMLElement {
         })()
       : null;
 
-  const scanBtn = el("button", { textContent: "Scan this page" });
+  const scanBtn = el("button", { textContent: selectedAccount?.platform === "youtube" ? "Scan channel" : "Scan this page" });
   scanBtn.addEventListener("click", () => void scanActiveTab());
 
   const visible = visibleVideos();
   const totalCaptured = state.scannedVideos.size;
-  const videoList = el(
-    "div",
-    { className: "video-list" },
-    visible.length > 0
-      ? visible.map(renderVideoRow)
-      : [
-          el("div", {
-            className: "hint",
-            textContent: totalCaptured > 0 ? "No scanned videos match the current date filter." : "No videos scanned yet.",
-          }),
-        ]
-  );
+  const videoList = renderVideoList(visible, totalCaptured);
+  const youtubeSummary = renderYoutubeSummary(visible);
 
   const sendableCount = visible.filter((v) => state.selectedKeys.has(v.key)).length;
   const blockedByMismatch = mismatchWarning !== null && !state.mismatchAcknowledged;
@@ -621,7 +844,9 @@ function renderMainView(): HTMLElement {
   container.append(clientField, accountField);
   if (platformMismatchWarning) container.appendChild(platformMismatchWarning);
   if (mismatchWarning) container.appendChild(mismatchWarning);
-  container.append(renderDateFilterField(), el("hr"), scanBtn, videoList, sendBtn);
+  container.append(renderDateFilterField(), el("hr"), scanBtn);
+  if (youtubeSummary) container.appendChild(youtubeSummary);
+  container.append(videoList, sendBtn);
 
   if (state.status) container.appendChild(el("div", { className: "hint", textContent: state.status }));
   if (state.error) container.appendChild(el("div", { className: "error", textContent: state.error }));
