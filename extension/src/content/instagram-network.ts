@@ -19,6 +19,33 @@
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const debugConnections: any[] = ((window as any).__viralDrmIgRawConnections ??= []); // eslint-disable-line @typescript-eslint/no-explicit-any
 
+  // TEMPORARY DIAGNOSTIC: the confirmed profile-timeline connection never populates view_count,
+  // so this widens capture to any instagram.com/api/ response (not just /graphql/query, in case
+  // opening an individual Reel hits an older REST-style endpoint) and stashes anything containing
+  // a *populated* view/play count, regardless of whether it's shaped like a Relay connection.
+  // Remove once we know where real view counts live (or confirm they don't exist anywhere public).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const viewCountCandidates: any[] = ((window as any).__viralDrmIgViewCountDebug ??= []); // eslint-disable-line @typescript-eslint/no-explicit-any
+
+  function looksLikePopulatedViewCount(text: string): boolean {
+    return /"(view_count|play_count)":\s*[1-9]\d*/.test(text);
+  }
+
+  function maybeStashViewCountCandidate(url: string, text: string): void {
+    if (!looksLikePopulatedViewCount(text)) return;
+    try {
+      viewCountCandidates.push({ url, json: JSON.parse(text) });
+    } catch {
+      viewCountCandidates.push({ url, raw: text.slice(0, 5000) });
+    }
+    // eslint-disable-next-line no-console
+    console.log(
+      `%c[ViralDRM IG view-count debug] populated view/play count found in ${url}`,
+      "color:#ffd60a;font-weight:bold",
+      `— total candidates: ${viewCountCandidates.length}. Inspect via window.__viralDrmIgViewCountDebug`
+    );
+  }
+
   function postNodes(nodes: unknown[]): void {
     if (nodes.length === 0) return;
     window.postMessage({ source: MESSAGE_SOURCE, nodes }, "*");
@@ -61,10 +88,16 @@
   }
 
   function isTrackedUrl(url: string): boolean {
-    return url.includes("/graphql/query");
+    // Widened from just /graphql/query so the view-count diagnostic (below) can also see
+    // Instagram's older REST-style /api/v1/ endpoints, in case an individual Reel view uses one
+    // of those instead. The real connection-extraction logic no-ops harmlessly on anything that
+    // isn't shaped like a Relay connection, so this is safe to broaden.
+    return url.includes("/graphql/query") || url.includes("instagram.com/api/v1/");
   }
 
-  function handleResponseText(text: string): void {
+  function handleResponseText(url: string, text: string): void {
+    maybeStashViewCountCandidate(url, text);
+
     // Instagram, like Facebook, can return newline-delimited JSON for some multipart responses.
     let json: unknown;
     try {
@@ -93,7 +126,7 @@
         response
           .clone()
           .text()
-          .then(handleResponseText)
+          .then((text) => handleResponseText(url, text))
           .catch(() => {});
       }
     } catch {
@@ -115,7 +148,7 @@
     }) as typeof xhr.open;
 
     xhr.addEventListener("load", () => {
-      if (isTrackedUrl(trackedUrl)) handleResponseText(xhr.responseText);
+      if (isTrackedUrl(trackedUrl)) handleResponseText(trackedUrl, xhr.responseText);
     });
 
     return xhr;
