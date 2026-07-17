@@ -81,8 +81,15 @@ function captureVisibleTweets(): void {
       continue;
     }
 
-    const hasVideo = article.querySelector('[data-testid="videoPlayer"], [data-testid="videoComponent"], video');
-    if (!hasVideo) {
+    // A quote-tweet (own caption + someone else's embedded post) has no "reposted" label to catch
+    // above, but the embedded tweet renders as a nested article — so a video only counts as this
+    // tweet's own if it isn't nested inside that embedded sub-article. A video attached directly
+    // to the quote tweet itself (alongside the quote, not inside it) still passes this check.
+    const videoCandidates = Array.from(
+      article.querySelectorAll('[data-testid="videoPlayer"], [data-testid="videoComponent"], video')
+    );
+    const hasOwnVideo = videoCandidates.some((el) => el.closest('article[data-testid="tweet"]') === article);
+    if (!hasOwnVideo) {
       exclusionTotals.noVideo += 1;
       continue;
     }
