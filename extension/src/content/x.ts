@@ -15,7 +15,14 @@ import { truncateWords } from "../../../shared/format";
  */
 
 const capturedVideos = new Map<string, ScrapedVideo>();
-const processedTweetIds = new Set<string>();
+// Only tweets successfully captured as videos go here — locked, no need to recheck. Deliberately
+// NOT used to gate exclusions: X lazy-mounts video players, so a tweet that fails hasOwnVideo on
+// one poll may pass on a later one once the player actually mounts, and needs to stay eligible.
+const capturedTweetIds = new Set<string>();
+// Separate from capturedTweetIds: only dedupes the exclusionTotals *counting* (so a tweet sitting
+// on screen for several poll ticks isn't counted as excluded once per tick), without preventing
+// the tweet itself from being re-evaluated.
+const excludedOnceIds = new Set<string>();
 const exclusionTotals = { repost: 0, noVideo: 0, authorMismatch: 0 };
 let lastProfileHandle: string | null = null;
 
@@ -42,7 +49,8 @@ function currentProfileHandle(): string | null {
 
 function resetForNewProfile(): void {
   capturedVideos.clear();
-  processedTweetIds.clear();
+  capturedTweetIds.clear();
+  excludedOnceIds.clear();
   exclusionTotals.repost = 0;
   exclusionTotals.noVideo = 0;
   exclusionTotals.authorMismatch = 0;
@@ -72,12 +80,17 @@ function captureVisibleTweets(): void {
     if (!statusMatch) continue;
 
     const [, author, statusId] = statusMatch;
-    if (processedTweetIds.has(statusId)) continue; // already handled on an earlier poll
-    processedTweetIds.add(statusId);
+    if (capturedTweetIds.has(statusId)) continue; // already successfully captured — nothing more to do
+
+    const countExclusionOnce = (reason: keyof typeof exclusionTotals) => {
+      if (excludedOnceIds.has(statusId)) return;
+      excludedOnceIds.add(statusId);
+      exclusionTotals[reason] += 1;
+    };
 
     const socialContext = article.querySelector('[data-testid="socialContext"]');
     if (socialContext && /repost/i.test(socialContext.textContent ?? "")) {
-      exclusionTotals.repost += 1;
+      countExclusionOnce("repost");
       continue;
     }
 
@@ -90,14 +103,25 @@ function captureVisibleTweets(): void {
     );
     const hasOwnVideo = videoCandidates.some((el) => el.closest('article[data-testid="tweet"]') === article);
     if (!hasOwnVideo) {
-      exclusionTotals.noVideo += 1;
+      // Not locked out — X lazy-mounts video players, so this tweet is retried on the next poll
+      // rather than being permanently written off if the player just hasn't mounted yet.
+      countExclusionOnce("noVideo");
       continue;
     }
 
     if (profileHandle && author.toLowerCase() !== profileHandle) {
-      exclusionTotals.authorMismatch += 1;
+      countExclusionOnce("authorMismatch");
       continue;
     }
+
+    // Successful capture — lock it in and undo any earlier (now-stale) exclusion count so the
+    // stats don't double-count a tweet that failed hasOwnVideo on an earlier poll before its
+    // video player mounted.
+    if (excludedOnceIds.has(statusId)) {
+      excludedOnceIds.delete(statusId);
+      exclusionTotals.noVideo = Math.max(0, exclusionTotals.noVideo - 1);
+    }
+    capturedTweetIds.add(statusId);
 
     const publicationDate = timeEl?.getAttribute("datetime") ?? new Date().toISOString();
     const captionEl = article.querySelector('[data-testid="tweetText"]');
