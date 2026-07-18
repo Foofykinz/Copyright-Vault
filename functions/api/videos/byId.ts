@@ -4,7 +4,20 @@ import { nowIso } from "../../lib/ids";
 import { getVideoOrThrow } from "../../lib/db";
 import { optionalNonNegativeInt, optionalString, requireIsoDate, requireUrl } from "../../lib/validation";
 import { computeDeadline } from "../../../shared/dates";
-import type { UpdateVideoInput, VideoWithDeadline } from "../../../shared/types";
+import type { CombinationFolderSummary, UpdateVideoInput, VideoWithDeadline } from "../../../shared/types";
+
+async function foldersForVideo(db: D1Database, videoId: string): Promise<CombinationFolderSummary[]> {
+  const rows = await db
+    .prepare(
+      `SELECT cf.id as id, cf.name as name, cf.color as color
+       FROM combination_folder_videos cfv
+       JOIN combination_folders cf ON cf.id = cfv.combination_folder_id
+       WHERE cfv.video_id = ?`
+    )
+    .bind(videoId)
+    .all<CombinationFolderSummary>();
+  return rows.results;
+}
 
 export const onRequestGet: ApiHandler = async (context) => {
   try {
@@ -15,7 +28,7 @@ export const onRequestGet: ApiHandler = async (context) => {
       registrationDeadline: deadline.registrationDeadline,
       daysRemaining: deadline.daysRemaining,
       deadlineStatus: deadline.status,
-      folders: [],
+      folders: await foldersForVideo(context.env.DB, video.id),
     };
     return json({ video: withDeadline });
   } catch (err) {
@@ -69,7 +82,7 @@ export const onRequestPatch: ApiHandler = async (context) => {
       registrationDeadline: deadline.registrationDeadline,
       daysRemaining: deadline.daysRemaining,
       deadlineStatus: deadline.status,
-      folders: [],
+      folders: await foldersForVideo(context.env.DB, video.id),
     };
     return json({ video: withDeadline });
   } catch (err) {
