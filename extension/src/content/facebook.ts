@@ -7,8 +7,8 @@ import { truncateWords } from "../../../shared/format";
  * this file — it hasn't been confirmed against a live capture the way those were, so it's also
  * checked at the same nested path the caption lives at (comet_sections.content.story.actors) in
  * case this query variant puts it there instead. If neither path has it, ownership can't be
- * established for that story; verify against window.__viralDrmFbRawStories in the console and
- * adjust findActors() if the real path turns out to differ. */
+ * established for that story. To re-verify the real path, temporarily log the raw story object
+ * inside the window.addEventListener("message", ...) handler below, then adjust findActors(). */
 interface FacebookActor {
   id?: string | number;
   url?: string;

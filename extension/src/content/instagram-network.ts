@@ -20,11 +20,6 @@
 (function () {
   const MESSAGE_SOURCE = "viral-drm-instagram";
 
-  // Debug-only: keeps raw captured connections on window for direct console inspection (this
-  // script runs in the page's MAIN world, so no DevTools context-switching needed).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const debugConnections: any[] = ((window as any).__viralDrmIgRawConnections ??= []); // eslint-disable-line @typescript-eslint/no-explicit-any
-
   let capturedAppId: string | null = null;
 
   function captureAppId(headers: HeadersInit | undefined): void {
@@ -70,7 +65,6 @@
   function extractNodes(json: unknown): unknown[] {
     const connections: { edges: unknown[] }[] = [];
     collectConnections(json, connections);
-    debugConnections.push(...connections);
 
     const nodes: unknown[] = [];
     for (const conn of connections) {

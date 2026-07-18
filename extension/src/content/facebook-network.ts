@@ -14,51 +14,8 @@
 (function () {
   const MESSAGE_SOURCE = "viral-drm-facebook";
 
-  // Debug-only: keeps raw captured stories on window so they can be inspected directly from the
-  // normal DevTools console (this script runs in the page's MAIN world, so no context-switching
-  // needed). Run `window.__viralDrmFbDebug()` in the console to see stories whose video
-  // attachment has no permalink findable — the same failure mode fixed once already for /reel/.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const debugStories: any[] = ((window as any).__viralDrmFbRawStories ??= []); // eslint-disable-line @typescript-eslint/no-explicit-any
-
-  function findVideoNode(node: unknown, depth = 0): Record<string, unknown> | null {
-    if (!node || typeof node !== "object" || depth > 8) return null;
-    const obj = node as Record<string, unknown>;
-    if (obj.__typename === "Video") return obj;
-    for (const value of Object.values(obj)) {
-      if (value && typeof value === "object") {
-        const found = findVideoNode(value, depth + 1);
-        if (found) return found;
-      }
-    }
-    return null;
-  }
-
-  function hasUsableUrl(video: Record<string, unknown>): boolean {
-    return typeof video.permalink_url === "string" || video.id !== undefined;
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (window as any).__viralDrmFbDebug = () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const withVideo = debugStories.filter((s) => (s.attachments ?? []).some((a: any) => findVideoNode(a)));
-    // eslint-disable-line @typescript-eslint/no-explicit-any
-    const stuck = withVideo.filter((s) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const video = (s.attachments ?? []).map((a: any) => findVideoNode(a)).find((v: unknown) => v);
-      return !video || !hasUsableUrl(video);
-    });
-    console.log(`${debugStories.length} stories captured, ${withVideo.length} have a video, ${stuck.length} have neither a permalink nor an ID.`);
-    for (const s of stuck) {
-      console.log(`--- post_id ${s.post_id} ---`);
-      console.log(JSON.stringify(s.attachments, null, 2));
-    }
-    return { total: debugStories.length, withVideo: withVideo.length, stuck: stuck.length };
-  };
-
   function postStories(stories: unknown): void {
     if (!Array.isArray(stories) || stories.length === 0) return;
-    debugStories.push(...(stories as any[])); // eslint-disable-line @typescript-eslint/no-explicit-any
     window.postMessage({ source: MESSAGE_SOURCE, stories }, "*");
   }
 
