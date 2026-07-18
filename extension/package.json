@@ -7,10 +7,12 @@
   "scripts": {
     "build": "node build.mjs",
     "watch": "node build.mjs --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "package": "node package.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.2.2",
+    "archiver": "^7.0.1",
     "esbuild": "^0.28.1",
     "typescript": "^7.0.2"
   }

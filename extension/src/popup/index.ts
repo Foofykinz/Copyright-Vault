@@ -528,6 +528,11 @@ function el<K extends keyof HTMLElementTagNameMap>(
 function renderSettingsView(): HTMLElement {
   const container = el("div", { className: "field" });
 
+  const versionLine = el("div", {
+    className: "hint",
+    textContent: `Extension version: ${chrome.runtime.getManifest().version}`,
+  });
+
   const urlField = el("div", { className: "field" }, [
     el("label", { textContent: "Viral DRM API base URL" }),
     el("input", { id: "settings-url", type: "text", placeholder: "https://viral-drm.yourname.workers.dev", value: state.apiBaseUrl }),
@@ -551,7 +556,7 @@ function renderSettingsView(): HTMLElement {
     void saveSettings(urlInput.value.trim(), tokenInput.value.trim());
   });
 
-  container.append(urlField, tokenField, hint, saveBtn);
+  container.append(urlField, tokenField, hint, saveBtn, versionLine);
   if (state.error) container.appendChild(el("div", { className: "error", textContent: state.error }));
   return container;
 }

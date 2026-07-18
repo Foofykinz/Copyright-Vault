@@ -52,6 +52,16 @@ export function Sidebar() {
         </ul>
       </div>
 
+      <div className="sidebar-section">
+        <ul className="sidebar-list">
+          <li>
+            <NavLink to="/extension" className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}>
+              Extension
+            </NavLink>
+          </li>
+        </ul>
+      </div>
+
       {addingClient && (
         <ClientFormModal
           onSave={(name) => create(name)}

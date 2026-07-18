@@ -27,7 +27,7 @@ export function truncateWords(text: string, maxWords = 12): string {
 
 const ILLEGAL_FILENAME_CHARS = /[\\/:*?"<>|]/g;
 
-function sanitizeForFilename(text: string): string {
+export function sanitizeForFilename(text: string): string {
   return text.replace(ILLEGAL_FILENAME_CHARS, "").replace(/\s+/g, " ").trim();
 }
 

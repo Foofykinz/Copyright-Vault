@@ -133,6 +133,33 @@ npm run build     # one-off build
 npm run watch     # rebuild on save; reload the unpacked extension in the browser to pick it up
 ```
 
+## Releasing an update
+
+End users install this extension via "Load unpacked," not the Chrome Web Store, so there's no
+auto-update — each release has to be downloaded and manually reloaded. The Copyright Vault web
+app's **Extension** page (`/extension`) is the distribution point: it serves a pre-built ZIP plus
+the version/date/release-notes shown on that page, generated from `public/extension-releases/`
+at the project root.
+
+Checklist for every release:
+
+1. Bump `"version"` in `extension/public/manifest.json`.
+2. Edit `extension/RELEASE_NOTES.md` with this release's notes (one bullet per line — `-`/`*`
+   prefixes are optional, stripped automatically).
+3. `cd extension && npm run build`
+4. `npm run package` — packages `extension/dist/` into
+   `public/extension-releases/copyright-vault-extension-v<version>.zip` (source maps excluded,
+   any older ZIP removed) and writes `public/extension-releases/manifest.json`, which is what the
+   web app's Extension page reads for version/date/notes/download link.
+5. From the project root: `npm run deploy` — the new ZIP and release manifest are just static
+   files at this point, so the normal deploy picks them up like anything else in `public/`. No
+   separate upload step.
+6. Open `/extension` on the deployed site and confirm the version, release date, and notes shown
+   match what you just packaged, and that the download button works.
+
+`npm run package` fails loudly (and does nothing) if `extension/dist/manifest.json` doesn't
+exist yet — always run `npm run build` first.
+
 ## Known fragility
 
 None of these platforms' page structures or internal API response shapes are public or stable —

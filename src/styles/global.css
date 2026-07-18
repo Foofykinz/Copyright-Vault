@@ -743,3 +743,64 @@ table.dense-table td.wrap {
   color: var(--text-secondary);
   margin-top: 4px;
 }
+
+/* ---- Extension page ---- */
+
+.extension-summary-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.extension-summary-grid {
+  display: flex;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+
+.extension-summary-value {
+  font-size: 16px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.extension-instructions {
+  padding-left: 20px;
+}
+.extension-instructions li {
+  margin-bottom: 10px;
+}
+.extension-instructions code {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.extension-screenshot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.screenshot-placeholder {
+  aspect-ratio: 16 / 10;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 8px;
+}

@@ -7,6 +7,13 @@ import { VideoTable } from "../components/VideoTable";
 import { ManualVideoEntryModal } from "../components/ManualVideoEntryModal";
 import { LoadingBlock, ErrorBlock, StateBlock } from "../components/StateBlock";
 import { formatDisplayDate, MONTH_NAMES } from "../../shared/format";
+import type { YouTubeCategory } from "../../shared/types";
+
+const YOUTUBE_CATEGORY_LABELS: Record<YouTubeCategory, string> = {
+  short: "Shorts",
+  live: "Lives",
+  upload: "Regular Uploads",
+};
 
 export function SocialAccountPage() {
   const { clientId, accountId } = useParams<{ clientId: string; accountId: string }>();
@@ -16,8 +23,17 @@ export function SocialAccountPage() {
 
   const [selectedYear, setSelectedYear] = useState<number | "all">("all");
   const [selectedMonth, setSelectedMonth] = useState<number | "all">("all");
+  const [selectedCategory, setSelectedCategory] = useState<YouTubeCategory | "all">("all");
   const [addingVideo, setAddingVideo] = useState(false);
   const [pullMessage, setPullMessage] = useState<string | null>(null);
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<YouTubeCategory, number> = { short: 0, live: 0, upload: 0 };
+    for (const v of videos) {
+      if (v.youtubeCategory) counts[v.youtubeCategory] += 1;
+    }
+    return counts;
+  }, [videos]);
 
   const groups = useMemo(() => {
     const byYear = new Map<number, Map<number, number>>();
@@ -38,15 +54,16 @@ export function SocialAccountPage() {
   }, [videos]);
 
   const filteredVideos = useMemo(() => {
-    if (selectedYear === "all") return videos;
     return videos.filter((v) => {
+      if (selectedCategory !== "all" && v.youtubeCategory !== selectedCategory) return false;
+      if (selectedYear === "all") return true;
       const y = Number(v.publicationDate.slice(0, 4));
       if (y !== selectedYear) return false;
       if (selectedMonth === "all") return true;
       const m = Number(v.publicationDate.slice(5, 7));
       return m === selectedMonth;
     });
-  }, [videos, selectedYear, selectedMonth]);
+  }, [videos, selectedYear, selectedMonth, selectedCategory]);
 
   if (loading) return <LoadingBlock />;
   if (error) return <ErrorBlock message={error} />;
@@ -82,6 +99,15 @@ export function SocialAccountPage() {
               Open profile
             </button>
           )}
+          {videos.length > 0 ? (
+            <a href={`/api/social-accounts/${accountId}/videos/export`} className="btn" download>
+              Export Rights Manager CSV
+            </a>
+          ) : (
+            <button className="btn" disabled title="No videos to export yet">
+              Export Rights Manager CSV
+            </button>
+          )}
           <button className="btn btn-primary" onClick={() => setAddingVideo(true)}>
             + Add Video
           </button>
@@ -101,6 +127,33 @@ export function SocialAccountPage() {
 
       <div className="content-with-nav">
         <nav className="month-nav" aria-label="Filter by year and month">
+          {socialAccount.platform === "youtube" && (
+            <>
+              <div className="month-nav-year">Category</div>
+              <ul className="month-nav-list">
+                <li>
+                  <div
+                    className={`month-nav-item ${selectedCategory === "all" ? "active" : ""}`}
+                    onClick={() => setSelectedCategory("all")}
+                  >
+                    <span>All categories</span>
+                    <span className="month-nav-count">{videos.length}</span>
+                  </div>
+                </li>
+                {(["short", "live", "upload"] as const).map((category) => (
+                  <li key={category}>
+                    <div
+                      className={`month-nav-item ${selectedCategory === category ? "active" : ""}`}
+                      onClick={() => setSelectedCategory(category)}
+                    >
+                      <span>{YOUTUBE_CATEGORY_LABELS[category]}</span>
+                      <span className="month-nav-count">{categoryCounts[category]}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           <ul className="month-nav-list">
             <li>
               <div

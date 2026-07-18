@@ -1,6 +1,5 @@
+import { Link } from "react-router-dom";
 import { useLocalStorageState } from "../hooks/useLocalStorageState";
-
-const EXTENSION_SETUP_URL = "https://github.com/Foofykinz/Copyright-Vault/tree/main/extension";
 
 export function ExtensionInstallBanner() {
   const [dismissed, setDismissed] = useLocalStorageState("extensionBannerDismissed", false);
@@ -10,10 +9,8 @@ export function ExtensionInstallBanner() {
   return (
     <div className="extension-banner">
       <span>
-        Pull videos automatically from TikTok and X with the Viral DRM Collector browser extension.{" "}
-        <a href={EXTENSION_SETUP_URL} target="_blank" rel="noreferrer">
-          Setup instructions
-        </a>
+        Pull videos automatically from TikTok, X, Facebook, Instagram, and YouTube with the Copyright Vault browser
+        extension. <Link to="/extension">Download it here</Link>
       </span>
       <button className="btn btn-ghost btn-sm" onClick={() => setDismissed(true)} aria-label="Dismiss">
         Dismiss

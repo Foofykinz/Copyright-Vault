@@ -6,6 +6,7 @@ import { ClientPage } from "./pages/ClientPage";
 import { SocialAccountPage } from "./pages/SocialAccountPage";
 import { CombinationFoldersIndexPage } from "./pages/CombinationFoldersIndexPage";
 import { CombinationFolderPage } from "./pages/CombinationFolderPage";
+import { ExtensionPage } from "./pages/ExtensionPage";
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
             <Route path="/clients/:clientId/social/:accountId" element={<SocialAccountPage />} />
             <Route path="/folders" element={<CombinationFoldersIndexPage />} />
             <Route path="/folders/:folderId" element={<CombinationFolderPage />} />
+            <Route path="/extension" element={<ExtensionPage />} />
           </Routes>
         </div>
       </div>

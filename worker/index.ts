@@ -7,6 +7,7 @@ import * as clientSocialAccounts from "../functions/api/clients/byId/social-acco
 import * as clientStats from "../functions/api/clients/byId/stats";
 import * as socialAccountById from "../functions/api/social-accounts/byId";
 import * as socialAccountVideos from "../functions/api/social-accounts/byId/videos";
+import * as socialAccountVideosExport from "../functions/api/social-accounts/byId/videos/export";
 import * as videoById from "../functions/api/videos/byId";
 import * as combinationFoldersIndex from "../functions/api/combination-folders/index";
 import * as combinationFolderById from "../functions/api/combination-folders/byId";
@@ -42,6 +43,7 @@ register("/api/clients/:id/social-accounts", clientSocialAccounts);
 register("/api/clients/:id/stats", clientStats);
 register("/api/social-accounts/:id", socialAccountById);
 register("/api/social-accounts/:id/videos", socialAccountVideos);
+register("/api/social-accounts/:id/videos/export", socialAccountVideosExport);
 register("/api/videos/:id", videoById);
 register("/api/combination-folders", combinationFoldersIndex);
 register("/api/combination-folders/:id", combinationFolderById);

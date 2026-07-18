@@ -214,7 +214,7 @@ export interface YouTubeScannedVideo {
   videoId: string;
   videoUrl: string;
   title: string;
-  /** Video description, truncated the same way other platforms' captions are. */
+  /** Truncated from the video's title (not its description) — see functions/lib/youtube.ts. */
   caption: string;
   publicationDate: string;
   viewCount: number | null;

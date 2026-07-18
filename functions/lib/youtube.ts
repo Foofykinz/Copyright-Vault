@@ -387,7 +387,12 @@ export function mapYouTubeVideo(
     videoId,
     videoUrl,
     title: raw.snippet?.title ?? "",
-    caption: truncateWords(raw.snippet?.description ?? ""),
+    // Sourced from the title, not the description — unlike TikTok/IG/FB/X (where the on-screen
+    // caption *is* the only text), YouTube creators put the meaningful text in the title; the
+    // description is often boilerplate (links, hashtags, channel info) and unreliable as a label.
+    // caption is what's actually persisted/shown everywhere downstream (Video.caption, VideoTable);
+    // title above stays the full untruncated string, kept only for the suggested-filename builder.
+    caption: truncateWords(raw.snippet?.title ?? ""),
     publicationDate: raw.snippet.publishedAt,
     viewCount: raw.statistics?.viewCount !== undefined ? Number(raw.statistics.viewCount) : null,
     thumbnailUrl,

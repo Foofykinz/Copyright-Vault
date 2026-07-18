@@ -7,6 +7,12 @@ compatibility_flags = ["nodejs_compat"]
 directory = "./dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
+# Without this, Cloudflare's asset layer serves static files (and the SPA fallback) BEFORE this
+# Worker's fetch() ever runs, for any request shaped like a browser navigation (Accept: text/html).
+# That silently swallowed /api/* requests made via a real <a href> click/navigation (as opposed to
+# a fetch()/XHR call from already-booted JS) — e.g. the CSV export link — serving index.html instead
+# of ever reaching the /api/ routing check below. This makes the Worker run first for every request.
+run_worker_first = true
 
 [[d1_databases]]
 binding = "DB"

@@ -1,0 +1,4 @@
+- Added YouTube channel scanning (Shorts, Lives, and Regular Uploads, classified automatically)
+- Added real view-count lookups for Instagram Reels
+- Fixed a cross-profile mix-up risk on TikTok, Facebook, and X when switching between clients
+- First version distributed from the Copyright Vault Extension page instead of GitHub
