@@ -16,9 +16,48 @@
  *
  * Isolated-world content scripts can't see MAIN-world globals directly, so captured nodes (and the
  * app-id header) are relayed to content/instagram.ts via window.postMessage, which both worlds share.
+ *
+ * postMessage with targetOrigin "*" is visible to any other script running on the page — a
+ * malicious or compromised script sharing this same MAIN world could otherwise forge messages
+ * tagged with our MESSAGE_SOURCE string and inject fabricated data into the isolated world's
+ * capture buffer. content/instagram.ts generates a random per-page-load nonce and hands it to this
+ * script via an initial handshake message; every real data message below is tagged with that nonce,
+ * and the isolated-world listener rejects anything that doesn't match it. This raises the bar
+ * against a naive/blind forgery attempt, but can't be a perfect guarantee — a sufficiently
+ * motivated attacker script running in the same MAIN world could still observe the nonce by
+ * listening for our own legitimate messages and replay it. There's no channel between MAIN and
+ * isolated worlds that isn't visible to same-world page scripts; that's inherent to how MAIN-world
+ * content scripts work, not something fixable with a cleverer handshake.
  */
 (function () {
   const MESSAGE_SOURCE = "viral-drm-instagram";
+
+  let relayNonce: string | null = null;
+  const pendingMessages: Record<string, unknown>[] = [];
+
+  // Accepts only the first handshake received — a forged handshake racing the real one can, at
+  // worst, cause our own later messages to be tagged with the wrong nonce and rejected by the
+  // isolated world (a denial of the relay, not a way to get forged data accepted, since the
+  // isolated world always validates against the nonce *it* generated, never one MAIN world claims).
+  window.addEventListener("message", (event) => {
+    if (event.source !== window || relayNonce) return;
+    const data = event.data as { source?: string; type?: string; nonce?: string } | undefined;
+    if (data?.source !== MESSAGE_SOURCE || data.type !== "handshake" || typeof data.nonce !== "string") return;
+    relayNonce = data.nonce;
+    for (const message of pendingMessages) window.postMessage({ ...message, nonce: relayNonce }, "*");
+    pendingMessages.length = 0;
+  });
+
+  // Sends immediately once the nonce handshake has completed; otherwise queues (real network
+  // responses take far longer than the handshake, so this should be rare in practice — a safety
+  // net for the theoretical race, not the expected path).
+  function sendOrQueue(message: Record<string, unknown>): void {
+    if (relayNonce) {
+      window.postMessage({ ...message, nonce: relayNonce }, "*");
+    } else {
+      pendingMessages.push(message);
+    }
+  }
 
   let capturedAppId: string | null = null;
 
@@ -29,7 +68,7 @@
       const appId = h.get("x-ig-app-id");
       if (appId) {
         capturedAppId = appId;
-        window.postMessage({ source: MESSAGE_SOURCE, appId }, "*");
+        sendOrQueue({ source: MESSAGE_SOURCE, appId });
       }
     } catch {
       // best-effort — a malformed headers value just means we try again on the next request
@@ -38,7 +77,7 @@
 
   function postNodes(nodes: unknown[]): void {
     if (nodes.length === 0) return;
-    window.postMessage({ source: MESSAGE_SOURCE, nodes }, "*");
+    sendOrQueue({ source: MESSAGE_SOURCE, nodes });
   }
 
   function isConnectionLike(value: unknown): value is { edges: unknown[] } {
@@ -140,7 +179,7 @@
     xhr.setRequestHeader = ((name: string, value: string) => {
       if (!capturedAppId && name.toLowerCase() === "x-ig-app-id" && value) {
         capturedAppId = value;
-        window.postMessage({ source: MESSAGE_SOURCE, appId: value }, "*");
+        sendOrQueue({ source: MESSAGE_SOURCE, appId: value });
       }
       return originalSetRequestHeader(name, value);
     }) as typeof xhr.setRequestHeader;

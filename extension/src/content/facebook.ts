@@ -41,6 +41,11 @@ const NETWORK_MESSAGE_SOURCE = "viral-drm-facebook";
 const capturedStories = new Map<string, FacebookStory>();
 let lastProfileHandle: string | null = null;
 
+// Authenticates messages from content/facebook-network.ts (MAIN world) — see the comment at the
+// top of that file for what this does and doesn't protect against.
+const sessionNonce = crypto.randomUUID();
+window.postMessage({ source: NETWORK_MESSAGE_SOURCE, type: "handshake", nonce: sessionNonce }, "*");
+
 function resetForNewProfile(): void {
   capturedStories.clear();
 }
@@ -170,8 +175,9 @@ function mergeStory(existing: FacebookStory | undefined, incoming: FacebookStory
 // intercept the actual GraphQL responses Facebook's own JavaScript uses to render the feed.
 window.addEventListener("message", (event) => {
   if (event.source !== window) return;
-  const data = event.data as { source?: string; stories?: unknown } | undefined;
+  const data = event.data as { source?: string; stories?: unknown; nonce?: string } | undefined;
   if (data?.source !== NETWORK_MESSAGE_SOURCE || !Array.isArray(data.stories)) return;
+  if (data.nonce !== sessionNonce) return; // not tagged with our own session nonce — reject
 
   const profileHandle = currentProfileHandle();
   // Facebook is a heavy SPA — browsing from one client's Page to another's (or through the home

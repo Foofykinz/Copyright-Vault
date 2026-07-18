@@ -10,13 +10,41 @@
  *
  * Isolated-world content scripts can't see MAIN-world globals directly, so captured stories are
  * relayed to content/facebook.ts via window.postMessage, which both worlds share.
+ *
+ * postMessage with targetOrigin "*" is visible to any other script running on the page — a
+ * malicious or compromised script sharing this same MAIN world could otherwise forge messages
+ * tagged with our MESSAGE_SOURCE string and inject fabricated data into the isolated world's
+ * capture buffer. content/facebook.ts generates a random per-page-load nonce and hands it to this
+ * script via an initial handshake message; every real data message below is tagged with that nonce,
+ * and the isolated-world listener rejects anything that doesn't match it. This raises the bar
+ * against a naive/blind forgery attempt, but can't be a perfect guarantee — see the same caveat in
+ * content/instagram-network.ts, which uses the identical pattern.
  */
 (function () {
   const MESSAGE_SOURCE = "viral-drm-facebook";
 
+  let relayNonce: string | null = null;
+  const pendingMessages: Record<string, unknown>[] = [];
+
+  // Accepts only the first handshake received — see content/instagram-network.ts for why a raced
+  // forged handshake only risks a denial of the relay, not forged data being accepted.
+  window.addEventListener("message", (event) => {
+    if (event.source !== window || relayNonce) return;
+    const data = event.data as { source?: string; type?: string; nonce?: string } | undefined;
+    if (data?.source !== MESSAGE_SOURCE || data.type !== "handshake" || typeof data.nonce !== "string") return;
+    relayNonce = data.nonce;
+    for (const message of pendingMessages) window.postMessage({ ...message, nonce: relayNonce }, "*");
+    pendingMessages.length = 0;
+  });
+
   function postStories(stories: unknown): void {
     if (!Array.isArray(stories) || stories.length === 0) return;
-    window.postMessage({ source: MESSAGE_SOURCE, stories }, "*");
+    const message = { source: MESSAGE_SOURCE, stories };
+    if (relayNonce) {
+      window.postMessage({ ...message, nonce: relayNonce }, "*");
+    } else {
+      pendingMessages.push(message);
+    }
   }
 
   // Scroll-triggered "load more" requests almost certainly use a different GraphQL query (and

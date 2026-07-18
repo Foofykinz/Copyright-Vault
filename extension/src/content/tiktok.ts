@@ -14,6 +14,11 @@ const NETWORK_MESSAGE_SOURCE = "viral-drm-tiktok";
 const capturedItems = new Map<string, TikTokItem>();
 let lastProfileHandle: string | null = null;
 
+// Authenticates messages from content/tiktok-network.ts (MAIN world) — see the comment at the top
+// of that file for what this does and doesn't protect against.
+const sessionNonce = crypto.randomUUID();
+window.postMessage({ source: NETWORK_MESSAGE_SOURCE, type: "handshake", nonce: sessionNonce }, "*");
+
 function resetForNewProfile(): void {
   capturedItems.clear();
 }
@@ -35,8 +40,9 @@ function normalizeHandle(raw: string | null | undefined): string | null {
 // intercept the actual API responses TikTok's own JavaScript uses to render the video grid.
 window.addEventListener("message", (event) => {
   if (event.source !== window) return;
-  const data = event.data as { source?: string; items?: unknown } | undefined;
+  const data = event.data as { source?: string; items?: unknown; nonce?: string } | undefined;
   if (data?.source !== NETWORK_MESSAGE_SOURCE || !Array.isArray(data.items)) return;
+  if (data.nonce !== sessionNonce) return; // not tagged with our own session nonce — reject
 
   const profileHandle = currentHandle();
   // TikTok is a SPA — navigating between profiles doesn't reload this content script, so without

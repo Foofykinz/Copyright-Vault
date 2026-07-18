@@ -31,6 +31,13 @@ const NETWORK_MESSAGE_SOURCE = "viral-drm-instagram";
 const capturedNodes = new Map<string, IgNode>();
 let lastProfileHandle: string | null = null;
 
+// Authenticates messages from content/instagram-network.ts (MAIN world) — see the comment at the
+// top of that file for what this does and doesn't protect against. Generated fresh per page load
+// and never exposed on window, so a same-page script can't read it directly; it can only learn it
+// by observing our own postMessage traffic (see the caveat in instagram-network.ts).
+const sessionNonce = crypto.randomUUID();
+window.postMessage({ source: NETWORK_MESSAGE_SOURCE, type: "handshake", nonce: sessionNonce }, "*");
+
 // Relayed from content/instagram-network.ts (MAIN world), which observes it on a real request
 // Instagram's own code makes. Needed to call /api/v1/media/<pk>/info/ ourselves for view-count
 // enrichment — Instagram rejects that endpoint without it.
@@ -119,8 +126,9 @@ function resetForNewProfile(): void {
 // intercept the actual GraphQL responses Instagram's own JavaScript uses to render the profile.
 window.addEventListener("message", (event) => {
   if (event.source !== window) return;
-  const data = event.data as { source?: string; nodes?: unknown; appId?: string } | undefined;
+  const data = event.data as { source?: string; nodes?: unknown; appId?: string; nonce?: string } | undefined;
   if (data?.source !== NETWORK_MESSAGE_SOURCE) return;
+  if (data.nonce !== sessionNonce) return; // not tagged with our own session nonce — reject
 
   if (typeof data.appId === "string") {
     capturedAppId = data.appId;
