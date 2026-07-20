@@ -13,6 +13,13 @@ export const PLATFORM_LABELS: Record<Platform, string> = {
 
 export type DeadlineStatus = "neutral" | "amber" | "urgent" | "expired";
 
+export interface SessionUser {
+  id: string;
+  name: string;
+  username: string;
+  mustChangePassword: boolean;
+}
+
 export interface Client {
   id: string;
   name: string;

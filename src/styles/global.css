@@ -140,6 +140,54 @@ a:hover {
   flex-shrink: 0;
 }
 
+.sidebar-user {
+  margin-top: auto;
+  padding: 12px 8px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebar-user-name {
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Auth (login / change password) ---- */
+
+.auth-shell {
+  height: 100vh;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.auth-card {
+  width: 320px;
+  padding: 24px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.auth-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.auth-subtitle {
+  margin: -8px 0 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 .main {
   flex: 1;
   display: flex;
@@ -335,6 +383,7 @@ input[type="number"],
 input[type="date"],
 input[type="time"],
 input[type="search"],
+input[type="password"],
 select,
 textarea {
   background: var(--bg);

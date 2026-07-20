@@ -8,6 +8,7 @@ import type {
   CreateCombinationFolderInput,
   CreateSocialAccountInput,
   CreateVideoInput,
+  SessionUser,
   SocialAccount,
   UpdateClientInput,
   UpdateCombinationFolderInput,
@@ -44,6 +45,13 @@ const post = <T>(path: string, body: unknown) => request<T>(path, { method: "POS
 const patch = <T>(path: string, body: unknown) => request<T>(path, { method: "PATCH", body: JSON.stringify(body) });
 
 export const api = {
+  auth: {
+    login: (username: string, password: string) => post<{ user: SessionUser }>("/auth/login", { username, password }),
+    logout: () => post<{ ok: true }>("/auth/logout", {}),
+    session: () => request<{ user: SessionUser }>("/auth/session"),
+    changePassword: (currentPassword: string, newPassword: string) =>
+      post<{ ok: true }>("/auth/change-password", { currentPassword, newPassword }),
+  },
   clients: {
     list: (includeArchived = false) =>
       request<{ clients: Client[] }>(`/clients${includeArchived ? "?archived=true" : ""}`),

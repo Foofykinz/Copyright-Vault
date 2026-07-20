@@ -7,11 +7,33 @@ import { SocialAccountPage } from "./pages/SocialAccountPage";
 import { CombinationFoldersIndexPage } from "./pages/CombinationFoldersIndexPage";
 import { CombinationFolderPage } from "./pages/CombinationFolderPage";
 import { ExtensionPage } from "./pages/ExtensionPage";
+import { LoginPage } from "./pages/LoginPage";
+import { ChangePasswordPage } from "./pages/ChangePasswordPage";
+import { useAuth } from "./hooks/useAuth";
+import { LoadingBlock } from "./components/StateBlock";
 
 export default function App() {
+  const { user, loading, refetch, logout } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="auth-shell">
+        <LoadingBlock label="Loading…" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginPage onLoggedIn={refetch} />;
+  }
+
+  if (user.mustChangePassword) {
+    return <ChangePasswordPage onChanged={refetch} />;
+  }
+
   return (
     <div className="app-shell">
-      <Sidebar />
+      <Sidebar user={user} onLogout={logout} />
       <div className="main">
         <ExtensionInstallBanner />
         <div className="main-scroll">

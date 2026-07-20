@@ -1,6 +1,11 @@
 import type { Env as ApiEnv, ApiHandler } from "../functions/lib/env";
 import { Router } from "./router";
+import { verifySession } from "../functions/lib/session";
 
+import * as authLogin from "../functions/api/auth/login";
+import * as authLogout from "../functions/api/auth/logout";
+import * as authSession from "../functions/api/auth/session";
+import * as authChangePassword from "../functions/api/auth/change-password";
 import * as clientsIndex from "../functions/api/clients/index";
 import * as clientById from "../functions/api/clients/byId";
 import * as clientSocialAccounts from "../functions/api/clients/byId/social-accounts";
@@ -37,6 +42,10 @@ function register(pattern: string, mod: RouteModule): void {
   if (mod.onRequestDelete) router.add("DELETE", pattern, mod.onRequestDelete);
 }
 
+register("/api/auth/login", authLogin);
+register("/api/auth/logout", authLogout);
+register("/api/auth/session", authSession);
+register("/api/auth/change-password", authChangePassword);
 register("/api/clients", clientsIndex);
 register("/api/clients/:id", clientById);
 register("/api/clients/:id/social-accounts", clientSocialAccounts);
@@ -53,11 +62,31 @@ register("/api/extension/videos", extensionVideos);
 register("/api/metadata", metadataLookup);
 register("/api/youtube/channel-videos", youtubeChannelVideos);
 
+// Routes reachable without a staff login: /api/auth/* handles its own auth (login has none by
+// nature; logout/session/change-password each call verifySession internally), and the extension
+// routes authenticate machine-to-machine via requireBearerToken instead of a browser session.
+const SESSION_EXEMPT_PREFIXES = ["/api/auth/"];
+const SESSION_EXEMPT_EXACT = ["/api/extension/videos", "/api/youtube/channel-videos"];
+
+function isSessionExempt(pathname: string): boolean {
+  return SESSION_EXEMPT_EXACT.includes(pathname) || SESSION_EXEMPT_PREFIXES.some((p) => pathname.startsWith(p));
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
     if (url.pathname.startsWith("/api/")) {
+      if (!isSessionExempt(url.pathname)) {
+        const userId = await verifySession(request, env);
+        if (!userId) {
+          return new Response(JSON.stringify({ error: "Not authenticated." }), {
+            status: 401,
+            headers: { "content-type": "application/json" },
+          });
+        }
+      }
+
       const response = await router.handle(request, env);
       return (
         response ??

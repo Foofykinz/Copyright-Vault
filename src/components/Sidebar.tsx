@@ -3,12 +3,15 @@ import { NavLink } from "react-router-dom";
 import { useClients, useClientMutations } from "../hooks/useClients";
 import { useAllCombinationFolders } from "../hooks/useCombinationFolders";
 import { ClientFormModal } from "./ClientFormModal";
+import { ChangePasswordModal } from "./ChangePasswordModal";
+import type { SessionUser } from "../../shared/types";
 
-export function Sidebar() {
+export function Sidebar({ user, onLogout }: { user: SessionUser; onLogout: () => Promise<void> }) {
   const { clients, loading: clientsLoading, refetch: refetchClients } = useClients();
   const { combinationFolders, loading: foldersLoading } = useAllCombinationFolders();
   const { create } = useClientMutations(refetchClients);
   const [addingClient, setAddingClient] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
 
   return (
     <aside className="sidebar">
@@ -62,12 +65,25 @@ export function Sidebar() {
         </ul>
       </div>
 
+      <div className="sidebar-user">
+        <span className="sidebar-user-name" title={user.username}>
+          {user.name}
+        </span>
+        <button className="btn btn-ghost btn-sm" onClick={() => setChangingPassword(true)}>
+          Change password
+        </button>
+        <button className="btn btn-ghost btn-sm" onClick={() => void onLogout()}>
+          Log out
+        </button>
+      </div>
+
       {addingClient && (
         <ClientFormModal
           onSave={(name) => create(name)}
           onClose={() => setAddingClient(false)}
         />
       )}
+      {changingPassword && <ChangePasswordModal onClose={() => setChangingPassword(false)} />}
     </aside>
   );
 }
