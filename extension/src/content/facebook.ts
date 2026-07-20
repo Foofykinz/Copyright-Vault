@@ -2,52 +2,47 @@ import type { ScanResult, ScrapedVideo } from "../lib/scraped";
 import { isDevBuild, SCAN_MESSAGE } from "../lib/scraped";
 import { truncateWords } from "../../../shared/format";
 
-/** The entity (Page or user) that posted a Story. `actors` is a well-established top-level field on
- * Facebook's GraphQL Story type in the wild, but — unlike the Video-node/caption paths elsewhere in
- * this file — it hasn't been confirmed against a live capture the way those were, so it's also
- * checked at the same nested path the caption lives at (comet_sections.content.story.actors) in
- * case this query variant puts it there instead. If neither path has it, ownership can't be
- * established for that story. To re-verify the real path, temporarily log the raw story object
- * inside the window.addEventListener("message", ...) handler below, then adjust findActors(). */
-interface FacebookActor {
-  id?: string | number;
-  url?: string;
-  name?: string;
-}
+/**
+ * Reads Facebook's own rendered DOM instead of intercepting fetch/XMLHttpRequest — deliberately
+ * traded off against the network-interception approach this replaced (see git history:
+ * facebook-network.ts) after that technique was suspected (not confirmed) of contributing to a
+ * Facebook account restriction. This never patches window.fetch/XHR and never runs in the page's
+ * MAIN world, so there's no window.postMessage bridge and nothing to spoof — same posture X
+ * already has.
+ *
+ * The tradeoff: Facebook's markup doesn't have a stable, documented convention the way X's
+ * data-testid attributes do. The selectors below (role="article" story containers, href-pattern
+ * matching for permalinks, [dir="auto"] for caption text) are a best-effort first pass based on
+ * long-standing Facebook DOM conventions, NOT verified against a live capture the way every other
+ * scraper in this codebase was before shipping. Treat this as a draft that needs a real test pass
+ * against an actual profile page — exclusionCounts below exists specifically so that pass can see
+ * what's being missed and why, the same way it did for X and TikTok during their own bring-up.
+ *
+ * Only a `<video>` element or a link into a known video-post URL shape counts as "this post has a
+ * video" — text/photo posts are never included. A story with no resolvable permalink or
+ * publication date is retried on a later poll rather than skipped forever or given a fabricated
+ * fallback (same policy as every other platform here) — Facebook lazy-mounts video players and
+ * sometimes the timestamp tooltip isn't populated yet on first render.
+ */
 
-interface FacebookStory {
-  post_id?: string;
-  creation_time?: number;
-  attached_story?: unknown;
-  attachments?: unknown[];
-  actors?: FacebookActor[];
-  comet_sections?: {
-    content?: {
-      story?: {
-        actors?: FacebookActor[];
-        comet_sections?: {
-          message?: {
-            story?: {
-              message?: { text?: string };
-            };
-          };
-        };
-      };
-    };
-  };
-}
-
-const NETWORK_MESSAGE_SOURCE = "viral-drm-facebook";
-const capturedStories = new Map<string, FacebookStory>();
+const capturedVideos = new Map<string, ScrapedVideo>();
+const capturedKeys = new Set<string>();
+const excludedOnceKeys = new Set<string>();
+const exclusionTotals = { share: 0, noVideo: 0, noPermalink: 0, noDate: 0 };
 let lastProfileHandle: string | null = null;
 
 function resetForNewProfile(): void {
-  capturedStories.clear();
+  capturedVideos.clear();
+  capturedKeys.clear();
+  excludedOnceKeys.clear();
+  exclusionTotals.share = 0;
+  exclusionTotals.noVideo = 0;
+  exclusionTotals.noPermalink = 0;
+  exclusionTotals.noDate = 0;
 }
 
 // Reserved top-level paths that share the same single-segment URL shape as a profile/Page
-// (facebook.com/<name>/) but aren't one — without this, currentProfileHandle() would misidentify
-// them as a profile to scope captures to.
+// (facebook.com/<name>/) but aren't one.
 const RESERVED_PATHS = new Set([
   "watch", "groups", "marketplace", "gaming", "events", "pages", "help", "settings", "messages",
   "notifications", "stories", "reel", "story.php", "photo.php", "permalink.php", "share", "login",
@@ -69,192 +64,162 @@ function currentProfileHandle(): string | null {
   return RESERVED_PATHS.has(handle) ? null : handle;
 }
 
-function findActors(story: FacebookStory): FacebookActor[] | null {
-  if (Array.isArray(story.actors) && story.actors.length > 0) return story.actors;
-  const nested = story.comet_sections?.content?.story?.actors;
-  if (Array.isArray(nested) && nested.length > 0) return nested;
-  return null;
-}
+// Known Facebook permalink shapes for a video-carrying post. Deliberately broad (posts/reels/watch
+// links too, not just /videos/) since a video can be attached to any of these post types.
+const PERMALINK_HREF_RE = /\/(videos|reel|posts|watch)\/|permalink\.php\?|story_fbid=/;
 
-/** Deliberately does NOT compare actor.name against the URL handle — a Page's display name has no
- * reliable relationship to its vanity URL (e.g. "Reed Timmer" vs. "reedtimmerwx"), so that would be
- * guessing, not verifying. Only a numeric ID match or the actor's own permalink resolving to the
- * same handle count as a real match. */
-function actorMatchesProfile(actor: FacebookActor, profileHandle: string): boolean {
-  if (actor.id !== undefined && String(actor.id).toLowerCase() === profileHandle) return true;
-  if (typeof actor.url === "string") {
+function findPermalink(container: HTMLElement): string | null {
+  for (const a of Array.from(container.querySelectorAll<HTMLAnchorElement>("a[href]"))) {
+    const href = a.getAttribute("href") ?? "";
+    if (!PERMALINK_HREF_RE.test(href)) continue;
     try {
-      const url = new URL(actor.url, location.origin);
-      if (url.pathname === "/profile.php") {
-        const id = url.searchParams.get("id");
-        if (id && id.toLowerCase() === profileHandle) return true;
-      } else {
-        const seg = /^\/([A-Za-z0-9_.\-]{1,80})\/?/.exec(url.pathname)?.[1]?.toLowerCase();
-        if (seg && seg === profileHandle) return true;
-      }
+      return new URL(href, location.origin).toString();
     } catch {
-      // malformed actor URL — no match
-    }
-  }
-  return false;
-}
-
-/** If ownership can't be established (no actors found at either known path), the story is excluded
- * rather than assumed to belong to whatever profile is currently open. */
-function isAuthoredByProfile(story: FacebookStory, profileHandle: string): boolean {
-  const actors = findActors(story);
-  if (!actors) return false;
-  return actors.some((actor) => actorMatchesProfile(actor, profileHandle));
-}
-
-/**
- * Facebook wraps a video's real data differently depending on presentation (Reel vs. regular
- * /videos/ post vs. Live), and sometimes duplicates the same Video node at multiple paths within
- * one story (confirmed by live capture: it showed up at both styles.attachment.media and
- * styles.style_infos[].containing_story...). Rather than assume one fixed path — which is exactly
- * what silently dropped non-Reel videos before — this walks the whole subtree looking for any
- * node that's actually a Video, and returns the node itself so callers can pull whichever fields
- * they need off it (permalink_url, id, ...).
- */
-function findVideoNode(node: unknown, depth = 0): Record<string, unknown> | null {
-  if (!node || typeof node !== "object" || depth > 8) return null;
-  const obj = node as Record<string, unknown>;
-  if (obj.__typename === "Video") return obj;
-  for (const value of Object.values(obj)) {
-    if (value && typeof value === "object") {
-      const found = findVideoNode(value, depth + 1);
-      if (found) return found;
+      continue;
     }
   }
   return null;
 }
 
-function findStoryVideoNode(story: FacebookStory): Record<string, unknown> | null {
-  for (const attachment of story.attachments ?? []) {
-    const found = findVideoNode(attachment);
-    if (found) return found;
+// Facebook commonly puts the full timestamp in a title attribute on the (abbreviated, relative-
+// time) permalink/date link, for the hover tooltip — same idea as an HTML `title` on X's <time>,
+// just without a dedicated element. Falls back to any element with an aria-label that parses as a
+// date, since which one carries it varies by surface (profile timeline vs. Page vs. Reels).
+function findPublicationDate(container: HTMLElement): string | null {
+  for (const el of Array.from(container.querySelectorAll<HTMLElement>("a[title], abbr[title], span[title]"))) {
+    const title = el.getAttribute("title");
+    if (!title) continue;
+    const parsed = Date.parse(title);
+    if (!Number.isNaN(parsed)) return new Date(parsed).toISOString();
+  }
+  for (const el of Array.from(container.querySelectorAll<HTMLElement>("[aria-label]"))) {
+    const label = el.getAttribute("aria-label") ?? "";
+    const parsed = Date.parse(label);
+    if (!Number.isNaN(parsed)) return new Date(parsed).toISOString();
   }
   return null;
 }
 
-/** Prefers the real permalink; falls back to Facebook's universal watch URL from the video ID,
- * since permalink_url isn't always present but id consistently is. */
-function videoUrlFromNode(video: Record<string, unknown>): string | null {
-  if (typeof video.permalink_url === "string" && video.permalink_url) return video.permalink_url;
-  if (typeof video.id === "string" && video.id) return `https://www.facebook.com/watch/?v=${video.id}`;
-  if (typeof video.id === "number") return `https://www.facebook.com/watch/?v=${video.id}`;
-  return null;
-}
-
-function storyRichness(story: FacebookStory): number {
-  try {
-    return JSON.stringify(story).length;
-  } catch {
-    return 0;
+// Best-effort caption: Facebook wraps user-generated text (post bodies, not chrome/labels) in
+// dir="auto" for bidi text handling — a long-standing convention, though not guaranteed stable.
+// Picks the longest such block in the container, on the theory that UI labels are short and post
+// text is comparatively long.
+function findCaption(container: HTMLElement): string {
+  let best = "";
+  for (const el of Array.from(container.querySelectorAll<HTMLElement>('[dir="auto"]'))) {
+    const text = el.textContent?.trim() ?? "";
+    if (text.length > best.length) best = text;
   }
+  return best;
 }
 
-/** Facebook can capture the same post_id more than once (different queries, different detail
- * levels) — keep whichever version actually has a usable video, and among ties keep the richer one,
- * rather than letting a later thinner capture silently overwrite a usable earlier one. */
-function mergeStory(existing: FacebookStory | undefined, incoming: FacebookStory): FacebookStory {
-  if (!existing) return incoming;
-  const existingVideo = findStoryVideoNode(existing);
-  const incomingVideo = findStoryVideoNode(incoming);
-  if (incomingVideo && !existingVideo) return incoming;
-  if (existingVideo && !incomingVideo) return existing;
-  return storyRichness(incoming) > storyRichness(existing) ? incoming : existing;
+function looksLikeShare(container: HTMLElement): boolean {
+  const headerText = container.textContent?.slice(0, 400) ?? "";
+  return /\bshared\b/i.test(headerText);
 }
 
-// Relayed here by content/facebook-network.ts, which runs in the page's MAIN world so it can
-// intercept the actual GraphQL responses Facebook's own JavaScript uses to render the feed.
-window.addEventListener("message", (event) => {
-  if (event.source !== window) return;
-  const data = event.data as { source?: string; stories?: unknown } | undefined;
-  if (data?.source !== NETWORK_MESSAGE_SOURCE || !Array.isArray(data.stories)) return;
+function hasVideo(container: HTMLElement): boolean {
+  if (container.querySelector("video")) return true;
+  return Array.from(container.querySelectorAll<HTMLAnchorElement>("a[href]")).some((a) =>
+    /\/(videos|reel|watch)\//.test(a.getAttribute("href") ?? "")
+  );
+}
 
+function captureVisibleStories(): void {
   const profileHandle = currentProfileHandle();
-  // Facebook is a heavy SPA — browsing from one client's Page to another's (or through the home
-  // feed in between) doesn't reload this content script, so without this a session could mix
-  // Stories from several different profiles/Pages together.
+  // Facebook is a heavy SPA — browsing from one client's profile to another's doesn't reload this
+  // content script, so without this a session could mix videos from several profiles together.
   if (profileHandle !== lastProfileHandle) {
     resetForNewProfile();
     lastProfileHandle = profileHandle;
   }
-  // Not on a recognized profile/Page route — refuse to accumulate anything. The network script
-  // still watches every /api/graphql/ response (query IDs rotate too often to target one path
-  // reliably), so this per-story ownership check is the actual enforcement point.
   if (!profileHandle) return;
 
-  for (const story of data.stories as FacebookStory[]) {
-    if (!story?.post_id) continue;
-    if (!isAuthoredByProfile(story, profileHandle)) continue; // can't verify ownership — exclude
-    capturedStories.set(story.post_id, mergeStory(capturedStories.get(story.post_id), story));
-  }
-});
+  const articles = Array.from(document.querySelectorAll<HTMLElement>('[role="article"]'));
 
-function extractCaption(story: FacebookStory): string {
-  const text = story.comet_sections?.content?.story?.comet_sections?.message?.story?.message?.text;
-  return typeof text === "string" ? text : "";
-}
+  for (const article of articles) {
+    // Skip a story nested inside another (a shared post's embedded original, a comment, etc.) —
+    // only top-level timeline entries.
+    if (article.parentElement?.closest('[role="article"]')) continue;
 
-function scan(): ScanResult {
-  const profileHandle = currentProfileHandle();
-  if (profileHandle !== lastProfileHandle) {
-    resetForNewProfile();
-    lastProfileHandle = profileHandle;
-  }
-
-  const videos: ScrapedVideo[] = [];
-  const exclusionCounts = { share: 0, missingIds: 0, noVideoFound: 0, noUrlOrId: 0, notAuthor: 0 };
-
-  if (!profileHandle) {
-    return { supported: true, profileHandle: null, videos, totalCandidates: capturedStories.size, exclusionCounts };
-  }
-
-  for (const story of capturedStories.values()) {
-    // attached_story is populated when this Story is a share/repost of someone else's post —
-    // skip those so only original videos posted directly by the profile are included.
-    if (story.attached_story) {
-      exclusionCounts.share += 1;
-      continue;
-    }
-    if (!story.post_id || story.creation_time === undefined) {
-      exclusionCounts.missingIds += 1;
-      continue;
-    }
-    // Re-verified here, not just trusted from capture time (capture already checked this, but a
-    // final pass guards against anything that slipped in some other way).
-    if (!isAuthoredByProfile(story, profileHandle)) {
-      exclusionCounts.notAuthor += 1;
-      if (isDevBuild()) console.warn("[ViralDRM] Facebook story excluded — author/page mismatch:", story.post_id, findActors(story));
+    if (looksLikeShare(article)) {
+      exclusionTotals.share += 1;
       continue;
     }
 
-    const videoNode = findStoryVideoNode(story);
-    if (!videoNode) {
-      exclusionCounts.noVideoFound += 1;
+    if (!hasVideo(article)) {
+      // Not locked out — Facebook lazy-mounts video players, retried on a later poll.
+      exclusionTotals.noVideo += 1;
       continue;
     }
 
-    const videoUrl = videoUrlFromNode(videoNode);
-    if (!videoUrl) {
-      exclusionCounts.noUrlOrId += 1;
-      console.warn("[ViralDRM] Facebook video found but no permalink or ID available:", story.post_id, story);
+    const permalink = findPermalink(article);
+    if (!permalink) {
+      exclusionTotals.noPermalink += 1;
+      if (isDevBuild()) console.warn("[ViralDRM] Facebook story has a video but no resolvable permalink yet.");
       continue;
     }
 
-    videos.push({
-      key: `facebook:${story.post_id}`,
-      videoUrl,
-      publicationDate: new Date(story.creation_time * 1000).toISOString(),
-      caption: truncateWords(extractCaption(story)),
-      // Facebook's feed query doesn't carry view counts publicly — stays manual, same as X.
+    const key = `facebook:${permalink}`;
+    if (capturedKeys.has(key)) continue; // already successfully captured
+
+    const publicationDate = findPublicationDate(article);
+    if (!publicationDate) {
+      exclusionTotals.noDate += 1;
+      continue;
+    }
+
+    capturedKeys.add(key);
+    capturedVideos.set(key, {
+      key,
+      videoUrl: permalink,
+      publicationDate,
+      caption: truncateWords(findCaption(article)),
+      // Facebook doesn't expose view counts publicly in either the feed DOM or its network
+      // responses — stays manual, same as X.
       viewCount: null,
     });
   }
+}
 
-  return { supported: true, profileHandle, videos, totalCandidates: capturedStories.size, exclusionCounts };
+// Passive background capture, matching x.ts: an interval poll plus a scroll listener, since a fast
+// scroll can render and virtualize a story back out between two poll ticks.
+setInterval(captureVisibleStories, 500);
+
+let scrollCaptureScheduled = false;
+document.addEventListener(
+  "scroll",
+  () => {
+    if (scrollCaptureScheduled) return;
+    scrollCaptureScheduled = true;
+    setTimeout(() => {
+      captureVisibleStories();
+      scrollCaptureScheduled = false;
+    }, 150);
+  },
+  { passive: true, capture: true }
+);
+
+captureVisibleStories();
+
+function scan(): ScanResult {
+  captureVisibleStories(); // catch anything since the last poll tick
+
+  const profileHandle = lastProfileHandle;
+  if (!profileHandle) {
+    return { supported: true, profileHandle: null, videos: [], totalCandidates: 0, exclusionCounts: { ...exclusionTotals } };
+  }
+
+  const videos = [...capturedVideos.values()];
+  const totalCandidates = videos.length + exclusionTotals.share + exclusionTotals.noVideo + exclusionTotals.noPermalink + exclusionTotals.noDate;
+
+  return {
+    supported: true,
+    profileHandle,
+    videos,
+    totalCandidates,
+    exclusionCounts: { ...exclusionTotals },
+  };
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

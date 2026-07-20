@@ -350,6 +350,16 @@ async function scanYouTubeAccount(account: SocialAccount): Promise<void> {
   render();
 }
 
+/** Re-reads the active tab and updates tabPlatform/tabUrl accordingly — shared by the manual scan
+ * flow and the background Facebook poll so both agree on what "the current page" means. */
+async function refreshActiveTabInfo(): Promise<chrome.tabs.Tab | undefined> {
+  const tab = await activeTab();
+  if (tab?.url !== state.tabUrl) state.mismatchAcknowledged = false;
+  state.tabPlatform = detectTabPlatform(tab?.url);
+  state.tabUrl = tab?.url ?? null;
+  return tab;
+}
+
 async function scanActiveTab(): Promise<void> {
   state.status = null;
   state.error = null;
@@ -360,10 +370,7 @@ async function scanActiveTab(): Promise<void> {
     return;
   }
 
-  const tab = await activeTab();
-  state.tabPlatform = detectTabPlatform(tab?.url);
-  if (tab?.url !== state.tabUrl) state.mismatchAcknowledged = false;
-  state.tabUrl = tab?.url ?? null;
+  const tab = await refreshActiveTabInfo();
   if (!tab?.id) {
     state.error = "No active tab found.";
     render();
@@ -406,6 +413,8 @@ async function scanActiveTab(): Promise<void> {
       noStatusLink: "video found but link/date couldn't be matched",
       authorMismatch: "video belongs to a different account",
       notAuthor: "posted by neither the profile nor a listed coauthor",
+      noPermalink: "video found but no link available yet",
+      noDate: "video found but no date available yet",
     };
     const exclusionParts = Object.entries(result.exclusionCounts ?? {})
       .filter(([, count]) => count > 0)
@@ -429,6 +438,55 @@ async function scanActiveTab(): Promise<void> {
   }
   render();
 }
+
+/** Facebook has no Scan button — the content script accumulates videos continuously as you scroll
+ * (see content/facebook.ts), and this quietly pulls whatever it's found so far into the review
+ * list on a timer, the same merge scanActiveTab() does for a manual scan on every other platform,
+ * just without writing a status line on every tick. Returns whether anything new was merged, so
+ * the caller only re-renders (and disturbs the list/scroll position) when something actually
+ * changed. */
+async function pollFacebookTab(tabId: number): Promise<boolean> {
+  try {
+    const result = (await chrome.tabs.sendMessage(tabId, { type: SCAN_MESSAGE })) as ScanResult | undefined;
+    if (!result || !Array.isArray(result.videos)) return false;
+
+    let added = 0;
+    for (const video of result.videos) {
+      if (state.existingVideoUrls.has(video.videoUrl)) continue;
+      if (!state.scannedVideos.has(video.key)) added += 1;
+      state.scannedVideos.set(video.key, video);
+      state.selectedKeys.add(video.key);
+    }
+    if (added > 0) persistSession();
+    return added > 0;
+  } catch {
+    return false; // content script not ready yet (e.g. page still loading) — retried next tick
+  }
+}
+
+const FACEBOOK_POLL_INTERVAL_MS = 1500;
+let facebookPollInFlight = false;
+
+async function facebookPollTick(): Promise<void> {
+  // Not configured / mid-send / on the settings screen — nothing to poll into.
+  if (!state.apiBaseUrl || !state.apiToken || state.showSettings || state.busy) return;
+  if (facebookPollInFlight) return;
+  facebookPollInFlight = true;
+  try {
+    const previousPlatform = state.tabPlatform;
+    const tab = await refreshActiveTabInfo();
+    let changed = state.tabPlatform !== previousPlatform;
+
+    if (state.tabPlatform === "facebook" && tab?.id) {
+      changed = (await pollFacebookTab(tab.id)) || changed;
+    }
+    if (changed) render();
+  } finally {
+    facebookPollInFlight = false;
+  }
+}
+
+setInterval(() => void facebookPollTick(), FACEBOOK_POLL_INTERVAL_MS);
 
 async function sendSelected(): Promise<void> {
   const account = state.socialAccounts.find((a) => a.id === state.selectedSocialAccountId);
@@ -823,8 +881,15 @@ function renderMainView(): HTMLElement {
         })()
       : null;
 
-  const scanBtn = el("button", { textContent: selectedAccount?.platform === "youtube" ? "Scan channel" : "Scan this page" });
-  scanBtn.addEventListener("click", () => void scanActiveTab());
+  const isYoutubeAccount = selectedAccount?.platform === "youtube";
+  // Facebook has no Scan button — facebookPollTick() populates the list automatically as you
+  // scroll (see content/facebook.ts), so a manual scan trigger would just be redundant.
+  const isFacebookPage = !isYoutubeAccount && state.tabPlatform === "facebook";
+  let scanBtn: HTMLButtonElement | null = null;
+  if (!isFacebookPage) {
+    scanBtn = el("button", { textContent: isYoutubeAccount ? "Scan channel" : "Scan this page" });
+    scanBtn.addEventListener("click", () => void scanActiveTab());
+  }
 
   const visible = visibleVideos();
   const totalCaptured = state.scannedVideos.size;
@@ -849,7 +914,14 @@ function renderMainView(): HTMLElement {
   container.append(clientField, accountField);
   if (platformMismatchWarning) container.appendChild(platformMismatchWarning);
   if (mismatchWarning) container.appendChild(mismatchWarning);
-  container.append(renderDateFilterField(), el("hr"), scanBtn);
+  container.append(renderDateFilterField(), el("hr"));
+  if (scanBtn) {
+    container.appendChild(scanBtn);
+  } else if (isFacebookPage) {
+    container.appendChild(
+      el("div", { className: "hint", textContent: "Videos populate automatically below as you scroll this page." })
+    );
+  }
   if (youtubeSummary) container.appendChild(youtubeSummary);
   container.append(videoList, sendBtn);
 
