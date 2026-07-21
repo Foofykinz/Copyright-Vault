@@ -34,8 +34,14 @@
     },
     {
       "matches": ["https://www.facebook.com/*"],
+      "js": ["content-facebook-network.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://www.facebook.com/*"],
       "js": ["content-facebook.js"],
-      "run_at": "document_idle"
+      "run_at": "document_start"
     },
     {
       "matches": ["https://www.instagram.com/*"],
