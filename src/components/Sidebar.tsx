@@ -58,6 +58,11 @@ export function Sidebar({ user, onLogout }: { user: SessionUser; onLogout: () =>
       <div className="sidebar-section">
         <ul className="sidebar-list">
           <li>
+            <NavLink to="/infringements" className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}>
+              Infringements
+            </NavLink>
+          </li>
+          <li>
             <NavLink to="/extension" className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}>
               Extension
             </NavLink>

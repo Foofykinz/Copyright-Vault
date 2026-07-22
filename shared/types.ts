@@ -104,6 +104,61 @@ export interface CombinationFolderWithComputed extends CombinationFolder {
   videoCount: number;
 }
 
+// ---- Infringement reports ----
+// Tracks someone ELSE posting a client's content without permission — the opposite direction from
+// Video, which tracks a client's own posts on their own accounts.
+
+export type InfringementStatus = "needs_review" | "logged" | "takedown" | "ignored";
+
+export const INFRINGEMENT_STATUSES: InfringementStatus[] = ["needs_review", "logged", "takedown", "ignored"];
+
+export const INFRINGEMENT_STATUS_LABELS: Record<InfringementStatus, string> = {
+  needs_review: "Needs Review",
+  logged: "Logged",
+  takedown: "Takedown Issued",
+  ignored: "Ignored",
+};
+
+export interface InfringementReport {
+  id: string;
+  clientId: string | null;
+  infringerName: string;
+  infringingUrl: string;
+  platform: Platform;
+  /** When the infringing content was itself posted — distinct from createdAt (when it was logged here). */
+  postedAt: string;
+  notes: string | null;
+  status: InfringementStatus;
+  foundByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Read-only display conveniences joined in by the server — never sent back on an update. */
+export interface InfringementReportWithNames extends InfringementReport {
+  clientName: string | null;
+  foundByName: string;
+}
+
+export interface CreateInfringementReportInput {
+  clientId?: string | null;
+  infringerName: string;
+  infringingUrl: string;
+  platform: Platform;
+  postedAt: string;
+  notes?: string | null;
+}
+
+export interface UpdateInfringementReportInput {
+  clientId?: string | null;
+  infringerName?: string;
+  infringingUrl?: string;
+  platform?: Platform;
+  postedAt?: string;
+  notes?: string | null;
+  status?: InfringementStatus;
+}
+
 export interface ClientStats {
   totalVideos: number;
   unassignedVideos: number;

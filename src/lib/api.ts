@@ -7,12 +7,15 @@ import type {
   CreateClientInput,
   CreateCombinationFolderInput,
   CreateSocialAccountInput,
+  CreateInfringementReportInput,
   CreateVideoInput,
+  InfringementReportWithNames,
   MarkRightsManagerSentResult,
   SessionUser,
   SocialAccount,
   UpdateClientInput,
   UpdateCombinationFolderInput,
+  UpdateInfringementReportInput,
   UpdateSocialAccountInput,
   UpdateVideoInput,
   VideoMetadataResult,
@@ -113,5 +116,21 @@ export const api = {
   rightsManager: {
     markSent: (clientId: string, videoIds: string[]) =>
       post<MarkRightsManagerSentResult>("/rights-manager/mark-sent", { clientId, videoIds }),
+  },
+  infringementReports: {
+    list: (filters?: { status?: string; clientId?: string }) => {
+      const params = new URLSearchParams();
+      if (filters?.status) params.set("status", filters.status);
+      if (filters?.clientId) params.set("clientId", filters.clientId);
+      const qs = params.toString();
+      return request<{ infringementReports: InfringementReportWithNames[] }>(
+        `/infringement-reports${qs ? `?${qs}` : ""}`
+      );
+    },
+    create: (input: CreateInfringementReportInput) =>
+      post<{ infringementReport: InfringementReportWithNames }>("/infringement-reports", input),
+    update: (id: string, input: UpdateInfringementReportInput) =>
+      patch<{ infringementReport: InfringementReportWithNames }>(`/infringement-reports/${id}`, input),
+    remove: (id: string) => del(`/infringement-reports/${id}`),
   },
 };

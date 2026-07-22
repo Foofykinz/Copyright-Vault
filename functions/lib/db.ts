@@ -1,4 +1,4 @@
-import type { Client, CombinationFolder, Platform, SocialAccount, Video } from "../../shared/types";
+import type { Client, CombinationFolder, InfringementReport, InfringementStatus, Platform, SocialAccount, Video } from "../../shared/types";
 import { NotFoundError } from "./http";
 
 interface ClientRow {
@@ -48,6 +48,20 @@ interface CombinationFolderRow {
   name: string;
   color: string;
   notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface InfringementReportRow {
+  id: string;
+  client_id: string | null;
+  infringer_name: string;
+  infringing_url: string;
+  platform: string;
+  posted_at: string;
+  notes: string | null;
+  status: string;
+  found_by_user_id: string;
   created_at: string;
   updated_at: string;
 }
@@ -111,6 +125,22 @@ export function mapCombinationFolder(row: CombinationFolderRow): CombinationFold
   };
 }
 
+export function mapInfringementReport(row: InfringementReportRow): InfringementReport {
+  return {
+    id: row.id,
+    clientId: row.client_id,
+    infringerName: row.infringer_name,
+    infringingUrl: row.infringing_url,
+    platform: row.platform as Platform,
+    postedAt: row.posted_at,
+    notes: row.notes,
+    status: row.status as InfringementStatus,
+    foundByUserId: row.found_by_user_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 export async function getClientOrThrow(db: D1Database, id: string): Promise<Client> {
   const row = await db.prepare("SELECT * FROM clients WHERE id = ?").bind(id).first<ClientRow>();
   if (!row) throw new NotFoundError("Client not found.");
@@ -136,4 +166,10 @@ export async function getCombinationFolderOrThrow(db: D1Database, id: string): P
     .first<CombinationFolderRow>();
   if (!row) throw new NotFoundError("Combination folder not found.");
   return mapCombinationFolder(row);
+}
+
+export async function getInfringementReportOrThrow(db: D1Database, id: string): Promise<InfringementReport> {
+  const row = await db.prepare("SELECT * FROM infringement_reports WHERE id = ?").bind(id).first<InfringementReportRow>();
+  if (!row) throw new NotFoundError("Infringement report not found.");
+  return mapInfringementReport(row);
 }
