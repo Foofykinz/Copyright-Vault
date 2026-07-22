@@ -42,19 +42,19 @@ export function ExtensionPage() {
 
       {release && (
         <>
-          <div className="extension-summary-card">
-            <div className="extension-summary-grid">
+          <div className="summary-card">
+            <div className="summary-grid">
               <div>
                 <div className="hint">Current Version</div>
-                <div className="extension-summary-value">v{release.version}</div>
+                <div className="summary-value">v{release.version}</div>
               </div>
               <div>
                 <div className="hint">Released</div>
-                <div className="extension-summary-value">{formatDisplayDate(release.releaseDate)}</div>
+                <div className="summary-value">{formatDisplayDate(release.releaseDate)}</div>
               </div>
               <div>
                 <div className="hint">Compatible</div>
-                <div className="extension-summary-value">{release.compatible}</div>
+                <div className="summary-value">{release.compatible}</div>
               </div>
             </div>
             <a href={`/extension-releases/${release.zipFilename}`} className="btn btn-primary" download>

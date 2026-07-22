@@ -793,9 +793,9 @@ table.dense-table td.wrap {
   margin-top: 4px;
 }
 
-/* ---- Extension page ---- */
+/* ---- Summary cards (Extension, Dashboard) ---- */
 
-.extension-summary-card {
+.summary-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -807,16 +807,50 @@ table.dense-table td.wrap {
   flex-wrap: wrap;
 }
 
-.extension-summary-grid {
+.summary-grid {
   display: flex;
   gap: 32px;
   flex-wrap: wrap;
 }
 
-.extension-summary-value {
+.summary-value {
   font-size: 16px;
   font-weight: 600;
   margin-top: 2px;
+}
+
+/* ---- Dashboard page ---- */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.stat-card .stat-value {
+  font-size: 28px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.stat-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.stat-breakdown .badge {
+  font-size: 12px;
+  padding: 3px 8px;
 }
 
 .extension-instructions {

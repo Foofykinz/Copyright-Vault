@@ -166,6 +166,18 @@ export interface ClientStats {
   mostRecentPullAt: string | null;
 }
 
+// ---- Org-wide dashboard ----
+// Aggregate counts only, no per-user attribution.
+export interface DashboardStats {
+  totalClients: number;
+  totalSocialAccounts: number;
+  totalVideos: number;
+  videosByDeadlineStatus: Record<DeadlineStatus, number>;
+  totalSentToRightsManager: number;
+  totalInfringementReports: number;
+  infringementsByStatus: Record<InfringementStatus, number>;
+}
+
 // ---- API request payloads ----
 
 export interface CreateClientInput {

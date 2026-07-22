@@ -9,6 +9,7 @@ import type {
   CreateSocialAccountInput,
   CreateInfringementReportInput,
   CreateVideoInput,
+  DashboardStats,
   InfringementReportWithNames,
   MarkRightsManagerSentResult,
   SessionUser,
@@ -132,5 +133,8 @@ export const api = {
     update: (id: string, input: UpdateInfringementReportInput) =>
       patch<{ infringementReport: InfringementReportWithNames }>(`/infringement-reports/${id}`, input),
     remove: (id: string) => del(`/infringement-reports/${id}`),
+  },
+  stats: {
+    get: () => request<{ stats: DashboardStats }>("/stats"),
   },
 };

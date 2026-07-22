@@ -7,6 +7,7 @@ import { SocialAccountPage } from "./pages/SocialAccountPage";
 import { CombinationFoldersIndexPage } from "./pages/CombinationFoldersIndexPage";
 import { CombinationFolderPage } from "./pages/CombinationFolderPage";
 import { InfringementReportsPage } from "./pages/InfringementReportsPage";
+import { DashboardPage } from "./pages/DashboardPage";
 import { ExtensionPage } from "./pages/ExtensionPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage";
@@ -45,6 +46,7 @@ export default function App() {
             <Route path="/folders" element={<CombinationFoldersIndexPage />} />
             <Route path="/folders/:folderId" element={<CombinationFolderPage />} />
             <Route path="/infringements" element={<InfringementReportsPage />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/extension" element={<ExtensionPage />} />
           </Routes>
         </div>

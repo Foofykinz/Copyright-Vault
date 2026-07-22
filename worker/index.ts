@@ -21,6 +21,7 @@ import * as combinationFolderVideoById from "../functions/api/combination-folder
 import * as rightsManagerMarkSent from "../functions/api/rights-manager/mark-sent";
 import * as infringementReportsIndex from "../functions/api/infringement-reports/index";
 import * as infringementReportById from "../functions/api/infringement-reports/byId";
+import * as statsIndex from "../functions/api/stats/index";
 import * as extensionVideos from "../functions/api/extension/videos";
 import * as metadataLookup from "../functions/api/metadata/index";
 import * as youtubeChannelVideos from "../functions/api/youtube/channel-videos";
@@ -64,6 +65,7 @@ register("/api/combination-folders/:id/videos/:videoId", combinationFolderVideoB
 register("/api/rights-manager/mark-sent", rightsManagerMarkSent);
 register("/api/infringement-reports", infringementReportsIndex);
 register("/api/infringement-reports/:id", infringementReportById);
+register("/api/stats", statsIndex);
 register("/api/extension/videos", extensionVideos);
 register("/api/metadata", metadataLookup);
 register("/api/youtube/channel-videos", youtubeChannelVideos);
