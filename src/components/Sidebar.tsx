@@ -1,10 +1,83 @@
-import { useState } from "react";
-import { NavLink } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 import { useClients, useClientMutations } from "../hooks/useClients";
 import { useAllCombinationFolders } from "../hooks/useCombinationFolders";
 import { ClientFormModal } from "./ClientFormModal";
 import { ChangePasswordModal } from "./ChangePasswordModal";
-import type { SessionUser } from "../../shared/types";
+import type { Client, SessionUser } from "../../shared/types";
+
+function ClientPicker({ clients, loading }: { clients: Client[]; loading: boolean }) {
+  const location = useLocation();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const activeClient = useMemo(() => {
+    const match = /^\/clients\/([^/]+)/.exec(location.pathname);
+    return match ? (clients.find((c) => c.id === match[1]) ?? null) : null;
+  }, [location.pathname, clients]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? clients.filter((c) => c.name.toLowerCase().includes(q)) : clients;
+  }, [clients, query]);
+
+  useEffect(() => {
+    if (!open) return;
+    setQuery("");
+    inputRef.current?.focus();
+
+    const handlePointerDown = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="client-picker" ref={containerRef}>
+      <button type="button" className="client-picker-trigger" onClick={() => setOpen((o) => !o)}>
+        <span className="client-picker-trigger-label">{activeClient ? activeClient.name : "All clients"}</span>
+        <span className="client-picker-trigger-caret">▾</span>
+      </button>
+
+      {open && (
+        <div className="client-picker-panel">
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Search clients…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <ul className="sidebar-list client-picker-list">
+            {loading && <li className="sidebar-empty">Loading…</li>}
+            {!loading && filtered.length === 0 && <li className="sidebar-empty">No matches.</li>}
+            {filtered.map((client) => (
+              <li key={client.id}>
+                <NavLink
+                  to={`/clients/${client.id}`}
+                  className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}
+                  onClick={() => setOpen(false)}
+                >
+                  {client.name}
+                </NavLink>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function Sidebar({ user, onLogout }: { user: SessionUser; onLogout: () => Promise<void> }) {
   const { clients, loading: clientsLoading, refetch: refetchClients } = useClients();
@@ -21,17 +94,7 @@ export function Sidebar({ user, onLogout }: { user: SessionUser; onLogout: () =>
         <div className="sidebar-section-title">
           <span>Clients</span>
         </div>
-        <ul className="sidebar-list">
-          {clientsLoading && <li className="sidebar-empty">Loading…</li>}
-          {!clientsLoading && clients.length === 0 && <li className="sidebar-empty">No clients yet.</li>}
-          {clients.map((client) => (
-            <li key={client.id}>
-              <NavLink to={`/clients/${client.id}`} className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}>
-                {client.name}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
+        <ClientPicker clients={clients} loading={clientsLoading} />
         <button className="btn btn-ghost btn-sm" style={{ marginTop: 6, width: "100%" }} onClick={() => setAddingClient(true)}>
           + Add Client
         </button>
