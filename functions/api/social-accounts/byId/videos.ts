@@ -116,6 +116,7 @@ export const onRequestPost: ApiHandler = async (context) => {
       thumbnailUrl,
       notes,
       youtubeCategory: null,
+      rightsManagerSentAt: null,
       collectedAt: now,
       createdAt: now,
       updatedAt: now,

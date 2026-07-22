@@ -136,6 +136,15 @@ export function VideoTableRow({ video, selected, onToggleSelect, onUpdated, onDe
           {video.folders.length === 0 && <span className="text-secondary">—</span>}
         </span>
       </td>
+      <td>
+        {video.rightsManagerSentAt ? (
+          <span className="text-secondary" title={`Marked sent ${formatDisplayDate(video.rightsManagerSentAt)}`}>
+            ✓ Sent
+          </span>
+        ) : (
+          <span className="text-secondary">—</span>
+        )}
+      </td>
       <td className="wrap">
         {editing === "notes" ? (
           <input

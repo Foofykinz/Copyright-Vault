@@ -65,6 +65,10 @@ export interface Video {
   updatedAt: string;
   /** YouTube only — null for every other platform. */
   youtubeCategory: YouTubeCategory | null;
+  /** Set the first time this video is included in a "mark as sent" Rights Manager action — see
+   * rights_manager_batches/rights_manager_batch_videos. Denormalized here purely as a fast-path
+   * read cache (source of truth is the junction table) so listing videos doesn't need a join. */
+  rightsManagerSentAt: string | null;
 }
 
 /** Video with server-computed, non-persisted deadline fields. */
@@ -152,6 +156,22 @@ export interface UpdateVideoInput {
   viewCountCheckedAt?: string | null;
   notes?: string | null;
   thumbnailUrl?: string | null;
+}
+
+// ---- Rights Manager tracking (POST /api/rights-manager/mark-sent) ----
+
+export interface MarkRightsManagerSentInput {
+  clientId: string;
+  videoIds: string[];
+}
+
+/** One rights_manager_batches row is auto-created per call as an audit trail (who/when a set of
+ * videos was marked) — never surfaced as something a user names or manages, unlike Combination
+ * Folders. `videoIds` echoes back exactly which of the requested IDs were actually updated. */
+export interface MarkRightsManagerSentResult {
+  batchId: string;
+  markedAt: string;
+  videoIds: string[];
 }
 
 export interface CreateCombinationFolderInput {

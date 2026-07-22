@@ -39,6 +39,7 @@ interface VideoRow {
   created_at: string;
   updated_at: string;
   youtube_category?: string | null;
+  rights_manager_sent_at?: string | null;
 }
 
 interface CombinationFolderRow {
@@ -94,6 +95,7 @@ export function mapVideo(row: VideoRow): Video {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     youtubeCategory: (row.youtube_category as Video["youtubeCategory"]) ?? null,
+    rightsManagerSentAt: row.rights_manager_sent_at ?? null,
   };
 }
 

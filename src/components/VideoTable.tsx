@@ -34,6 +34,7 @@ export function VideoTable({ videos, clientId, onChanged, removeFromFolderId, em
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [assigning, setAssigning] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmingRightsManagerSend, setConfirmingRightsManagerSend] = useState(false);
 
   const availableFolders = useMemo(() => {
     const map = new Map<string, { id: string; name: string; color: string }>();
@@ -146,6 +147,9 @@ export function VideoTable({ videos, clientId, onChanged, removeFromFolderId, em
             <button className="btn btn-primary btn-sm" onClick={() => setAssigning(true)}>
               Add to Combination Folder
             </button>
+            <button className="btn btn-sm" onClick={() => setConfirmingRightsManagerSend(true)}>
+              Mark as sent to Rights Manager
+            </button>
             <button className="btn btn-danger btn-sm" onClick={() => setConfirmingDelete(true)}>
               Delete selected
             </button>
@@ -175,6 +179,7 @@ export function VideoTable({ videos, clientId, onChanged, removeFromFolderId, em
                 {headerSort("viewCount", "Views")}
                 {headerSort("daysRemaining", "Days Left")}
                 <th>Folders</th>
+                <th>RM</th>
                 <th>Notes</th>
                 <th>Link</th>
                 <th>Actions</th>
@@ -213,6 +218,21 @@ export function VideoTable({ videos, clientId, onChanged, removeFromFolderId, em
             onChanged();
           }}
           onClose={() => setAssigning(false)}
+        />
+      )}
+
+      {confirmingRightsManagerSend && (
+        <ConfirmDialog
+          title="Mark as sent to Rights Manager"
+          message={`Marks ${selection.size} video${selection.size === 1 ? "" : "s"} as sent to Rights Manager. This only records that you've already handled the upload yourself — it doesn't upload anything.`}
+          confirmLabel="Mark as sent"
+          onCancel={() => setConfirmingRightsManagerSend(false)}
+          onConfirm={async () => {
+            await api.rightsManager.markSent(clientId, [...selection]);
+            setSelection(new Set());
+            setConfirmingRightsManagerSend(false);
+            onChanged();
+          }}
         />
       )}
 

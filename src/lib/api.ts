@@ -8,6 +8,7 @@ import type {
   CreateCombinationFolderInput,
   CreateSocialAccountInput,
   CreateVideoInput,
+  MarkRightsManagerSentResult,
   SessionUser,
   SocialAccount,
   UpdateClientInput,
@@ -108,5 +109,9 @@ export const api = {
         `/combination-folders/${id}/videos/${videoId}`,
         { method: "DELETE" }
       ),
+  },
+  rightsManager: {
+    markSent: (clientId: string, videoIds: string[]) =>
+      post<MarkRightsManagerSentResult>("/rights-manager/mark-sent", { clientId, videoIds }),
   },
 };

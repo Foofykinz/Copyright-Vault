@@ -18,6 +18,7 @@ import * as combinationFoldersIndex from "../functions/api/combination-folders/i
 import * as combinationFolderById from "../functions/api/combination-folders/byId";
 import * as combinationFolderVideos from "../functions/api/combination-folders/byId/videos";
 import * as combinationFolderVideoById from "../functions/api/combination-folders/byId/videos/byVideoId";
+import * as rightsManagerMarkSent from "../functions/api/rights-manager/mark-sent";
 import * as extensionVideos from "../functions/api/extension/videos";
 import * as metadataLookup from "../functions/api/metadata/index";
 import * as youtubeChannelVideos from "../functions/api/youtube/channel-videos";
@@ -58,6 +59,7 @@ register("/api/combination-folders", combinationFoldersIndex);
 register("/api/combination-folders/:id", combinationFolderById);
 register("/api/combination-folders/:id/videos", combinationFolderVideos);
 register("/api/combination-folders/:id/videos/:videoId", combinationFolderVideoById);
+register("/api/rights-manager/mark-sent", rightsManagerMarkSent);
 register("/api/extension/videos", extensionVideos);
 register("/api/metadata", metadataLookup);
 register("/api/youtube/channel-videos", youtubeChannelVideos);
