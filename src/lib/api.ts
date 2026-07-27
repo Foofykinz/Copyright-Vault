@@ -14,6 +14,7 @@ import type {
   DashboardStats,
   InfringementReportWithNames,
   MarkRightsManagerSentResult,
+  RightsManagerBatchWithVideos,
   SessionUser,
   SocialAccount,
   UpdateClientInput,
@@ -67,6 +68,8 @@ export const api = {
     update: (id: string, input: UpdateClientInput) => patch<{ client: Client }>(`/clients/${id}`, input),
     remove: (id: string) => del(`/clients/${id}`),
     stats: (id: string) => request<{ stats: ClientStats }>(`/clients/${id}/stats`),
+    rightsManagerHistory: (id: string) =>
+      request<{ batches: RightsManagerBatchWithVideos[] }>(`/clients/${id}/rights-manager-history`),
   },
   socialAccounts: {
     listForClient: (clientId: string) =>
@@ -96,7 +99,6 @@ export const api = {
       request<{ combinationFolders: CombinationFolderWithComputed[] }>(
         `/combination-folders?clientId=${clientId}`
       ),
-    listAll: () => request<{ combinationFolders: CombinationFolderWithComputed[] }>("/combination-folders"),
     get: (id: string) =>
       request<{ combinationFolder: CombinationFolderWithComputed; videos: VideoWithDeadline[] }>(
         `/combination-folders/${id}`

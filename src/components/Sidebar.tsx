@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useClients, useClientMutations } from "../hooks/useClients";
-import { useAllCombinationFolders } from "../hooks/useCombinationFolders";
 import { ClientFormModal } from "./ClientFormModal";
 import { ChangePasswordModal } from "./ChangePasswordModal";
 import type { Client, SessionUser } from "../../shared/types";
@@ -82,7 +81,6 @@ function ClientPicker({ clients, loading }: { clients: Client[]; loading: boolea
 
 export function Sidebar({ user, onLogout }: { user: SessionUser; onLogout: () => Promise<void> }) {
   const { clients, loading: clientsLoading, refetch: refetchClients } = useClients();
-  const { combinationFolders, loading: foldersLoading } = useAllCombinationFolders();
   const { create } = useClientMutations(refetchClients);
   const [addingClient, setAddingClient] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
@@ -101,25 +99,7 @@ export function Sidebar({ user, onLogout }: { user: SessionUser; onLogout: () =>
         </button>
       </div>
 
-      <div className="sidebar-section" style={{ flex: 1, overflowY: "auto" }}>
-        <div className="sidebar-section-title">
-          <span>Combination Folders</span>
-        </div>
-        <ul className="sidebar-list">
-          {foldersLoading && <li className="sidebar-empty">Loading…</li>}
-          {!foldersLoading && combinationFolders.length === 0 && <li className="sidebar-empty">No folders yet.</li>}
-          {combinationFolders.map((folder) => (
-            <li key={folder.id}>
-              <NavLink to={`/folders/${folder.id}`} className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}>
-                <span className="color-dot" style={{ background: folder.color }} />
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{folder.name}</span>
-              </NavLink>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div className="sidebar-section">
+      <div className="sidebar-section" style={{ flex: 1 }}>
         <ul className="sidebar-list">
           <li>
             <NavLink to="/dashboard" className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}>

@@ -1,6 +1,7 @@
 import type { ApiHandler } from "../../../../lib/env";
 import { errorResponse } from "../../../../lib/http";
 import { getSocialAccountOrThrow } from "../../../../lib/db";
+import { nowIso } from "../../../../lib/ids";
 import { PLATFORM_LABELS, type Platform } from "../../../../../shared/types";
 import { sanitizeForFilename } from "../../../../../shared/format";
 
@@ -50,6 +51,15 @@ export const onRequestGet: ApiHandler = async (context) => {
     )
       .bind(socialAccountId)
       .all<ExportRow>();
+
+    if (rows.results.length > 0) {
+      const now = nowIso();
+      await context.env.DB.prepare(
+        "UPDATE videos SET rights_manager_exported_at = ?, updated_at = ? WHERE social_account_id = ?"
+      )
+        .bind(now, now, socialAccountId)
+        .run();
+    }
 
     const lines = [CSV_HEADER.map(csvField).join(",")];
     for (const row of rows.results) {

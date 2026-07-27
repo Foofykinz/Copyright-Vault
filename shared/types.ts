@@ -77,6 +77,9 @@ export interface Video {
    * rights_manager_batches/rights_manager_batch_videos. Denormalized here purely as a fast-path
    * read cache (source of truth is the junction table) so listing videos doesn't need a join. */
   rightsManagerSentAt: string | null;
+  /** Set whenever this video is included in an "Export Rights Manager CSV" download — a separate,
+   * earlier signal from rightsManagerSentAt (the manual "mark as sent" confirmation). */
+  rightsManagerExportedAt: string | null;
 }
 
 /** Video with server-computed, non-persisted deadline fields. */
@@ -253,6 +256,14 @@ export interface MarkRightsManagerSentResult {
   batchId: string;
   markedAt: string;
   videoIds: string[];
+}
+
+export interface RightsManagerBatchWithVideos {
+  id: string;
+  name: string;
+  createdAt: string;
+  videoCount: number;
+  videos: Video[];
 }
 
 export interface CreateCombinationFolderInput {

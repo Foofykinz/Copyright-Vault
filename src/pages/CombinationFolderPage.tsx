@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useClient } from "../hooks/useClients";
 import { useCombinationFolder, useCombinationFolderMutations } from "../hooks/useCombinationFolders";
 import { Breadcrumb } from "../components/Breadcrumb";
+import { ClientTabs } from "../components/ClientTabs";
 import { VideoTable } from "../components/VideoTable";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Modal } from "../components/Modal";
@@ -29,10 +30,13 @@ export function CombinationFolderPage() {
     <div>
       <Breadcrumb
         items={[
-          { label: "Combination Folders", to: "/folders" },
+          { label: "Clients", to: "/" },
+          { label: client?.name ?? "…", to: `/clients/${combinationFolder.clientId}` },
+          { label: "Combination Folders", to: `/clients/${combinationFolder.clientId}/combination-folders` },
           { label: combinationFolder.name },
         ]}
       />
+      <ClientTabs clientId={combinationFolder.clientId} />
       <div className="page-header">
         <div>
           <h1 className="page-title flex-row">
@@ -127,7 +131,7 @@ export function CombinationFolderPage() {
           onCancel={() => setConfirmingDelete(false)}
           onConfirm={async () => {
             await remove(combinationFolder.id);
-            navigate("/folders");
+            navigate(`/clients/${combinationFolder.clientId}/combination-folders`);
           }}
         />
       )}

@@ -127,20 +127,37 @@ export function VideoTableRow({ video, selected, onToggleSelect, onUpdated, onDe
         <DeadlineBadge daysRemaining={video.daysRemaining} status={video.deadlineStatus} />
       </td>
       <td>
-        <span className="folder-dots">
-          {video.folders.map((f) => (
-            <Link key={f.id} to={`/folders/${f.id}`} title={f.name}>
-              <span className="color-dot" style={{ background: f.color }} />
-            </Link>
-          ))}
-          {video.folders.length === 0 && <span className="text-secondary">—</span>}
-        </span>
+        {video.folders.length > 0 ? (
+          <div className="flex-col-tight">
+            {video.folders.map((f) => (
+              <Link
+                key={f.id}
+                to={`/clients/${video.clientId}/combination-folders/${f.id}`}
+                className="badge badge-success"
+                title={`In folder: ${f.name}`}
+              >
+                ● Moved to Combination Folder
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <span className="text-secondary">—</span>
+        )}
       </td>
       <td>
-        {video.rightsManagerSentAt ? (
-          <span className="text-secondary" title={`Marked sent ${formatDisplayDate(video.rightsManagerSentAt)}`}>
-            ✓ Sent
-          </span>
+        {video.rightsManagerSentAt || video.rightsManagerExportedAt ? (
+          <div className="flex-col-tight">
+            {video.rightsManagerSentAt && (
+              <span className="text-secondary" title={`Marked sent ${formatDisplayDate(video.rightsManagerSentAt)}`}>
+                ✓ Sent
+              </span>
+            )}
+            {video.rightsManagerExportedAt && (
+              <span className="badge badge-neutral" title={`Exported ${formatDisplayDate(video.rightsManagerExportedAt)}`}>
+                RM Exported
+              </span>
+            )}
+          </div>
         ) : (
           <span className="text-secondary">—</span>
         )}

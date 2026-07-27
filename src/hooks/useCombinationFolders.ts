@@ -13,12 +13,6 @@ export function useCombinationFolders(clientId: string | undefined) {
   return { combinationFolders: data?.combinationFolders ?? [], loading, error, refetch };
 }
 
-export function useAllCombinationFolders() {
-  const { data, loading, error, refetch } = useAsync(() => api.combinationFolders.listAll(), []);
-  useEffect(() => onDataEvent("combinationFolders", refetch), [refetch]);
-  return { combinationFolders: data?.combinationFolders ?? [], loading, error, refetch };
-}
-
 export function useCombinationFolder(id: string | undefined) {
   const { data, loading, error, refetch } = useAsync<{
     combinationFolder: CombinationFolderWithComputed | null;

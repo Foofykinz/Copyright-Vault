@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link } from "react-router-dom";
 import { useClient, useClientMutations, useClientStats } from "../hooks/useClients";
 import { useSocialAccountMutations, useSocialAccounts } from "../hooks/useSocialAccounts";
 import { Breadcrumb } from "../components/Breadcrumb";
+import { ClientTabs } from "../components/ClientTabs";
 import { ClientFormModal } from "../components/ClientFormModal";
 import { SocialAccountFormModal } from "../components/SocialAccountFormModal";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -36,6 +37,7 @@ export function ClientPage() {
   return (
     <div>
       <Breadcrumb items={[{ label: "Clients", to: "/" }, { label: client.name }]} />
+      <ClientTabs clientId={client.id} />
       <div className="page-header">
         <div>
           <h1 className="page-title">

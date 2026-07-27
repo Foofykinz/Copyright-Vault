@@ -48,6 +48,7 @@ interface VideoRow {
   updated_at: string;
   youtube_category?: string | null;
   rights_manager_sent_at?: string | null;
+  rights_manager_exported_at?: string | null;
 }
 
 interface CombinationFolderRow {
@@ -128,6 +129,7 @@ export function mapVideo(row: VideoRow): Video {
     updatedAt: row.updated_at,
     youtubeCategory: (row.youtube_category as Video["youtubeCategory"]) ?? null,
     rightsManagerSentAt: row.rights_manager_sent_at ?? null,
+    rightsManagerExportedAt: row.rights_manager_exported_at ?? null,
   };
 }
 

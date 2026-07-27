@@ -4,8 +4,9 @@ import { ExtensionInstallBanner } from "./components/ExtensionInstallBanner";
 import { HomePage } from "./pages/HomePage";
 import { ClientPage } from "./pages/ClientPage";
 import { SocialAccountPage } from "./pages/SocialAccountPage";
-import { CombinationFoldersIndexPage } from "./pages/CombinationFoldersIndexPage";
+import { ClientCombinationFoldersPage } from "./pages/ClientCombinationFoldersPage";
 import { CombinationFolderPage } from "./pages/CombinationFolderPage";
+import { RightsManagerHistoryPage } from "./pages/RightsManagerHistoryPage";
 import { InfringementReportsPage } from "./pages/InfringementReportsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { ExtensionPage } from "./pages/ExtensionPage";
@@ -43,8 +44,9 @@ export default function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/clients/:clientId" element={<ClientPage />} />
             <Route path="/clients/:clientId/social/:accountId" element={<SocialAccountPage />} />
-            <Route path="/folders" element={<CombinationFoldersIndexPage />} />
-            <Route path="/folders/:folderId" element={<CombinationFolderPage />} />
+            <Route path="/clients/:clientId/combination-folders" element={<ClientCombinationFoldersPage />} />
+            <Route path="/clients/:clientId/combination-folders/:folderId" element={<CombinationFolderPage />} />
+            <Route path="/clients/:clientId/rights-manager" element={<RightsManagerHistoryPage />} />
             <Route path="/infringements" element={<InfringementReportsPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/extension" element={<ExtensionPage />} />
