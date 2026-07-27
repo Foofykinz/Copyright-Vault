@@ -1,12 +1,20 @@
-import type { Client, CombinationFolder, InfringementReport, InfringementStatus, Platform, SocialAccount, Video } from "../../shared/types";
+import type { AffiliationTag, Client, CombinationFolder, InfringementReport, InfringementStatus, Platform, SocialAccount, Video } from "../../shared/types";
 import { NotFoundError } from "./http";
 
 interface ClientRow {
   id: string;
   name: string;
   archived: number;
+  affiliation_tag_id: string | null;
   created_at: string;
   updated_at: string;
+  affiliation_tag_name?: string | null;
+}
+
+interface AffiliationTagRow {
+  id: string;
+  name: string;
+  created_at: string;
 }
 
 interface SocialAccountRow {
@@ -71,8 +79,18 @@ export function mapClient(row: ClientRow): Client {
     id: row.id,
     name: row.name,
     archived: row.archived === 1,
+    affiliationTagId: row.affiliation_tag_id,
+    affiliationTagName: row.affiliation_tag_name ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+export function mapAffiliationTag(row: AffiliationTagRow): AffiliationTag {
+  return {
+    id: row.id,
+    name: row.name,
+    createdAt: row.created_at,
   };
 }
 
@@ -141,10 +159,22 @@ export function mapInfringementReport(row: InfringementReportRow): InfringementR
   };
 }
 
+const CLIENT_SELECT = `
+  SELECT c.*, t.name as affiliation_tag_name
+  FROM clients c
+  LEFT JOIN affiliation_tags t ON t.id = c.affiliation_tag_id
+`;
+
 export async function getClientOrThrow(db: D1Database, id: string): Promise<Client> {
-  const row = await db.prepare("SELECT * FROM clients WHERE id = ?").bind(id).first<ClientRow>();
+  const row = await db.prepare(`${CLIENT_SELECT} WHERE c.id = ?`).bind(id).first<ClientRow>();
   if (!row) throw new NotFoundError("Client not found.");
   return mapClient(row);
+}
+
+export async function getAffiliationTagOrThrow(db: D1Database, id: string): Promise<AffiliationTag> {
+  const row = await db.prepare("SELECT * FROM affiliation_tags WHERE id = ?").bind(id).first<AffiliationTagRow>();
+  if (!row) throw new NotFoundError("Affiliation tag not found.");
+  return mapAffiliationTag(row);
 }
 
 export async function getSocialAccountOrThrow(db: D1Database, id: string): Promise<SocialAccount> {

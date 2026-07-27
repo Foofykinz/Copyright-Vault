@@ -133,11 +133,13 @@ a:hover {
   font-size: 12px;
 }
 
-.client-picker {
+/* ---- Searchable dropdown combobox (client picker, affiliation tag picker) ---- */
+
+.combo {
   position: relative;
 }
 
-.client-picker-trigger {
+.combo-trigger {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -150,25 +152,25 @@ a:hover {
   text-align: left;
 }
 
-.client-picker-trigger:hover {
+.combo-trigger:hover {
   background: rgba(255, 255, 255, 0.05);
 }
 
-.client-picker-trigger-label {
+.combo-trigger-label {
   font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.client-picker-trigger-caret {
+.combo-trigger-caret {
   flex-shrink: 0;
   margin-left: 6px;
   font-size: 10px;
   color: var(--text-secondary);
 }
 
-.client-picker-panel {
+.combo-panel {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
@@ -184,9 +186,21 @@ a:hover {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
-.client-picker-list {
+.combo-list {
   max-height: 260px;
   overflow-y: auto;
+}
+
+.combo-option {
+  width: 100%;
+  border: none;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.combo-option.create {
+  color: var(--accent-hover);
 }
 
 .color-dot {
@@ -583,6 +597,17 @@ table.dense-table td.wrap {
 .badge-success {
   color: var(--green);
   border-color: rgba(76, 175, 125, 0.4);
+}
+
+.tag-pill {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  white-space: nowrap;
 }
 
 .platform-tag {

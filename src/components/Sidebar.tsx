@@ -43,14 +43,14 @@ function ClientPicker({ clients, loading }: { clients: Client[]; loading: boolea
   }, [open]);
 
   return (
-    <div className="client-picker" ref={containerRef}>
-      <button type="button" className="client-picker-trigger" onClick={() => setOpen((o) => !o)}>
-        <span className="client-picker-trigger-label">{activeClient ? activeClient.name : "All clients"}</span>
-        <span className="client-picker-trigger-caret">▾</span>
+    <div className="combo" ref={containerRef}>
+      <button type="button" className="combo-trigger" onClick={() => setOpen((o) => !o)}>
+        <span className="combo-trigger-label">{activeClient ? activeClient.name : "All clients"}</span>
+        <span className="combo-trigger-caret">▾</span>
       </button>
 
       {open && (
-        <div className="client-picker-panel">
+        <div className="combo-panel">
           <input
             ref={inputRef}
             type="text"
@@ -58,7 +58,7 @@ function ClientPicker({ clients, loading }: { clients: Client[]; loading: boolea
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
-          <ul className="sidebar-list client-picker-list">
+          <ul className="sidebar-list combo-list">
             {loading && <li className="sidebar-empty">Loading…</li>}
             {!loading && filtered.length === 0 && <li className="sidebar-empty">No matches.</li>}
             {filtered.map((client) => (
@@ -68,7 +68,8 @@ function ClientPicker({ clients, loading }: { clients: Client[]; loading: boolea
                   className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}
                   onClick={() => setOpen(false)}
                 >
-                  {client.name}
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{client.name}</span>
+                  {client.affiliationTagName && <span className="tag-pill">{client.affiliationTagName}</span>}
                 </NavLink>
               </li>
             ))}
@@ -152,7 +153,7 @@ export function Sidebar({ user, onLogout }: { user: SessionUser; onLogout: () =>
 
       {addingClient && (
         <ClientFormModal
-          onSave={(name) => create(name)}
+          onSave={(input) => create(input)}
           onClose={() => setAddingClient(false)}
         />
       )}

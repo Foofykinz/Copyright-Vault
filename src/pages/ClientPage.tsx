@@ -19,7 +19,7 @@ export function ClientPage() {
   const { stats } = useClientStats(clientId);
   const { socialAccounts, loading: accountsLoading, refetch: refetchAccounts } = useSocialAccounts(clientId);
 
-  const { rename, archive, remove } = useClientMutations(refetch);
+  const { update, archive, remove } = useClientMutations(refetch);
   const accountMutations = useSocialAccountMutations(clientId ?? "", refetchAccounts);
 
   const [editingClient, setEditingClient] = useState(false);
@@ -40,6 +40,11 @@ export function ClientPage() {
         <div>
           <h1 className="page-title">
             {client.name}
+            {client.affiliationTagName && (
+              <span className="tag-pill" style={{ marginLeft: 8 }}>
+                {client.affiliationTagName}
+              </span>
+            )}
             {client.archived && <span className="badge badge-neutral" style={{ marginLeft: 8 }}>Archived</span>}
           </h1>
           <div className="page-subtitle">
@@ -136,7 +141,7 @@ export function ClientPage() {
       )}
 
       {editingClient && (
-        <ClientFormModal client={client} onSave={(name) => rename(client.id, name)} onClose={() => setEditingClient(false)} />
+        <ClientFormModal client={client} onSave={(input) => update(client.id, input)} onClose={() => setEditingClient(false)} />
       )}
 
       {confirmingArchive && (

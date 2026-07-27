@@ -1,15 +1,17 @@
 import { useState, type FormEvent } from "react";
 import { Modal } from "./Modal";
-import type { Client } from "../../shared/types";
+import { AffiliationTagPicker } from "./AffiliationTagPicker";
+import type { Client, CreateClientInput } from "../../shared/types";
 
 interface ClientFormModalProps {
   client?: Client | null;
-  onSave: (name: string) => Promise<unknown>;
+  onSave: (input: CreateClientInput) => Promise<unknown>;
   onClose: () => void;
 }
 
 export function ClientFormModal({ client, onSave, onClose }: ClientFormModalProps) {
   const [name, setName] = useState(client?.name ?? "");
+  const [affiliationTagId, setAffiliationTagId] = useState<string | null>(client?.affiliationTagId ?? null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -22,7 +24,7 @@ export function ClientFormModal({ client, onSave, onClose }: ClientFormModalProp
     setBusy(true);
     setError(null);
     try {
-      await onSave(name.trim());
+      await onSave({ name: name.trim(), affiliationTagId });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save client.");
@@ -44,6 +46,10 @@ export function ClientFormModal({ client, onSave, onClose }: ClientFormModalProp
             maxLength={200}
           />
           {error && <span className="field-error">{error}</span>}
+        </div>
+        <div className="field">
+          <label>Affiliation</label>
+          <AffiliationTagPicker value={affiliationTagId} onChange={setAffiliationTagId} />
         </div>
         <div className="modal-footer">
           <button type="button" className="btn" onClick={onClose} disabled={busy}>

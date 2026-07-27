@@ -1,7 +1,9 @@
 import type {
+  AffiliationTag,
   ApiError,
   Client,
   ClientStats,
+  CreateAffiliationTagInput,
   CombinationFolder,
   CombinationFolderWithComputed,
   CreateClientInput,
@@ -136,5 +138,10 @@ export const api = {
   },
   stats: {
     get: () => request<{ stats: DashboardStats }>("/stats"),
+  },
+  affiliationTags: {
+    list: () => request<{ affiliationTags: AffiliationTag[] }>("/affiliation-tags"),
+    getOrCreate: (input: CreateAffiliationTagInput) =>
+      post<{ affiliationTag: AffiliationTag }>("/affiliation-tags", input),
   },
 };

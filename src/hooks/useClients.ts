@@ -2,7 +2,7 @@ import { useCallback, useEffect } from "react";
 import { api } from "../lib/api";
 import { useAsync } from "./useAsync";
 import { emitDataEvent, onDataEvent } from "../lib/dataEvents";
-import type { Client, ClientStats } from "../../shared/types";
+import type { Client, ClientStats, CreateClientInput, UpdateClientInput } from "../../shared/types";
 
 export function useClients() {
   const { data, loading, error, refetch } = useAsync(() => api.clients.list(), []);
@@ -28,17 +28,17 @@ export function useClientStats(clientId: string | undefined) {
 
 export function useClientMutations(onChanged?: () => void) {
   const create = useCallback(
-    async (name: string) => {
-      const result = await api.clients.create({ name });
+    async (input: CreateClientInput) => {
+      const result = await api.clients.create(input);
       onChanged?.();
       emitDataEvent("clients");
       return result.client;
     },
     [onChanged]
   );
-  const rename = useCallback(
-    async (id: string, name: string) => {
-      const result = await api.clients.update(id, { name });
+  const update = useCallback(
+    async (id: string, input: UpdateClientInput) => {
+      const result = await api.clients.update(id, input);
       onChanged?.();
       emitDataEvent("clients");
       return result.client;
@@ -62,5 +62,5 @@ export function useClientMutations(onChanged?: () => void) {
     },
     [onChanged]
   );
-  return { create, rename, archive, remove };
+  return { create, update, archive, remove };
 }

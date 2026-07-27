@@ -24,8 +24,16 @@ export interface Client {
   id: string;
   name: string;
   archived: boolean;
+  affiliationTagId: string | null;
+  affiliationTagName: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AffiliationTag {
+  id: string;
+  name: string;
+  createdAt: string;
 }
 
 export interface SocialAccount {
@@ -182,11 +190,17 @@ export interface DashboardStats {
 
 export interface CreateClientInput {
   name: string;
+  affiliationTagId?: string | null;
 }
 
 export interface UpdateClientInput {
   name?: string;
   archived?: boolean;
+  affiliationTagId?: string | null;
+}
+
+export interface CreateAffiliationTagInput {
+  name: string;
 }
 
 export interface CreateSocialAccountInput {
