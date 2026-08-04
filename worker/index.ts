@@ -1,6 +1,7 @@
 import type { Env as ApiEnv, ApiHandler } from "../functions/lib/env";
 import { Router } from "./router";
 import { verifySession } from "../functions/lib/session";
+import { hasValidBearerToken } from "../functions/lib/auth";
 
 import * as authLogin from "../functions/api/auth/login";
 import * as authLogout from "../functions/api/auth/logout";
@@ -84,6 +85,22 @@ function isSessionExempt(pathname: string): boolean {
   return SESSION_EXEMPT_EXACT.includes(pathname) || SESSION_EXEMPT_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
+// The extension's popup also reads these three (to populate its client/account pickers and check
+// for already-imported videos), but it runs in a chrome-extension:// page with no way to carry the
+// staff member's browser session cookie — it only ever has the extension API token. Without this,
+// those calls silently depend on incidental browser cookie state instead of the token, which is
+// exactly what broke for a staff member after a routine Chrome restart. Read-only (GET) on purpose:
+// the extension should never create/modify a client or social account via the shared token.
+const EXTENSION_TOKEN_READ_PATTERNS: RegExp[] = [
+  /^\/api\/clients$/,
+  /^\/api\/clients\/[^/]+\/social-accounts$/,
+  /^\/api\/social-accounts\/[^/]+\/videos$/,
+];
+
+function isExtensionReadPath(method: string, pathname: string): boolean {
+  return method === "GET" && EXTENSION_TOKEN_READ_PATTERNS.some((re) => re.test(pathname));
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -91,7 +108,9 @@ export default {
     if (url.pathname.startsWith("/api/")) {
       if (!isSessionExempt(url.pathname)) {
         const userId = await verifySession(request, env);
-        if (!userId) {
+        const extensionAuthorized =
+          !userId && isExtensionReadPath(request.method, url.pathname) && hasValidBearerToken(request, env);
+        if (!userId && !extensionAuthorized) {
           return new Response(JSON.stringify({ error: "Not authenticated." }), {
             status: 401,
             headers: { "content-type": "application/json" },
