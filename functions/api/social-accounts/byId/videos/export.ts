@@ -4,6 +4,7 @@ import { getSocialAccountOrThrow } from "../../../../lib/db";
 import { nowIso } from "../../../../lib/ids";
 import { PLATFORM_LABELS, type Platform } from "../../../../../shared/types";
 import { sanitizeForFilename } from "../../../../../shared/format";
+import { centralDateString, todayDateString } from "../../../../../shared/dates";
 
 function csvField(value: string): string {
   if (/[",\r\n]/.test(value)) {
@@ -70,7 +71,7 @@ export const onRequestGet: ApiHandler = async (context) => {
           csvField(row.video_url),
           csvField(row.caption ?? ""),
           csvField(""),
-          csvField(row.publication_date.slice(0, 10)),
+          csvField(centralDateString(row.publication_date)),
         ].join(",")
       );
     }
@@ -78,7 +79,7 @@ export const onRequestGet: ApiHandler = async (context) => {
     // CRLF line endings per RFC 4180 for maximum importer compatibility.
     const csv = String.fromCharCode(0xfeff) + lines.join("\r\n") + "\r\n";
 
-    const filename = `rights-manager-${sanitizeForFilename(account.accountName) || "export"}-${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename = `rights-manager-${sanitizeForFilename(account.accountName) || "export"}-${todayDateString()}.csv`;
 
     return new Response(csv, {
       status: 200,

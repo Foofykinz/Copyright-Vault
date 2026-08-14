@@ -14,6 +14,7 @@ import {
   resolveChannel,
 } from "../../lib/youtube";
 import type { YouTubeChannelVideosRequest, YouTubeChannelVideosResponse, YouTubeClassificationStatus } from "../../../shared/types";
+import { centralDateString } from "../../../shared/dates";
 
 /**
  * Retrieves a YouTube channel's public uploads (via the official Data API), classifies each as a
@@ -128,8 +129,8 @@ export const onRequestPost: ApiHandler = async (context) => {
       if (raw.status?.privacyStatus && raw.status.privacyStatus !== "public") continue;
       const publishedAt = raw.snippet?.publishedAt;
       if (!publishedAt) continue;
-      if (startDate && publishedAt.slice(0, 10) < startDate) continue;
-      if (endDate && publishedAt.slice(0, 10) > endDate) continue;
+      if (startDate && centralDateString(publishedAt) < startDate) continue;
+      if (endDate && centralDateString(publishedAt) > endDate) continue;
 
       seen.add(raw.id);
       const classified = classifyVideo(raw, confirmedShortIds);
@@ -152,7 +153,9 @@ export const onRequestPost: ApiHandler = async (context) => {
       .map((v) => v.publicationDate)
       .sort()[0];
     const shortsCoverageLimited =
-      !shortsLookupFailed && shortsHasMore && (!startDate || !oldestConfirmedShortDate || startDate < oldestConfirmedShortDate.slice(0, 10));
+      !shortsLookupFailed &&
+      shortsHasMore &&
+      (!startDate || !oldestConfirmedShortDate || startDate < centralDateString(oldestConfirmedShortDate));
 
     const classificationStatus: YouTubeClassificationStatus = shortsLookupFailed
       ? "shorts_lookup_failed"

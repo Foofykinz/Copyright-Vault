@@ -1,4 +1,5 @@
 import { truncateWords } from "../../shared/format";
+import { centralDateString } from "../../shared/dates";
 import type { YouTubeCategory, YouTubeLiveStatus } from "../../shared/types";
 import { UpstreamError, ValidationError } from "./http";
 
@@ -183,7 +184,7 @@ export async function fetchUploadsPlaylistItems(
       const videoId = item.contentDetails?.videoId;
       const publishedAt = item.contentDetails?.videoPublishedAt;
       if (!videoId || !publishedAt) continue;
-      if (startDate && publishedAt.slice(0, 10) < startDate) {
+      if (startDate && centralDateString(publishedAt) < startDate) {
         hitOlder = true;
         continue;
       }

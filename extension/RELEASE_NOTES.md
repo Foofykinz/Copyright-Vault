@@ -1,4 +1,3 @@
-- Reverted an in-progress messaging-hardening change on the Facebook collector back to the
-  prior stable approach, pending a separate account-level investigation
-- Fixed a bug where a Reels-tray video could be matched to the wrong caption on Page profiles
-- No visible changes to how scanning or sending works elsewhere
+- Fixed a timezone bug where videos posted late in the evening (Central time) could be
+  filed under the next day instead of the day they actually went up
+- No other visible changes

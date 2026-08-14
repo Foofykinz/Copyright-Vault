@@ -5,6 +5,7 @@ import { ENRICH_VIEW_COUNTS_MESSAGE, SCAN_MESSAGE, type EnrichViewCountsResult, 
 import type { Client, ExtensionVideoImportInput, Platform, SocialAccount, YouTubeClassificationStatus } from "../../../shared/types";
 import { PLATFORM_LABELS } from "../../../shared/types";
 import { suggestFilename } from "../../../shared/format";
+import { centralDateString } from "../../../shared/dates";
 
 const YOUTUBE_CATEGORY_LABELS: Record<"short" | "live" | "upload", string> = {
   short: "SHORTS",
@@ -118,7 +119,7 @@ async function activeTab(): Promise<chrome.tabs.Tab | undefined> {
 function isWithinDateFilter(video: ScrapedVideo): boolean {
   if (state.dateMode === "range") {
     if (!state.rangeStart || !state.rangeEnd) return true; // incomplete range: don't hide anything yet
-    const day = video.publicationDate.slice(0, 10);
+    const day = centralDateString(video.publicationDate);
     return day >= state.rangeStart && day <= state.rangeEnd;
   }
   const account = state.socialAccounts.find((a) => a.id === state.selectedSocialAccountId);
@@ -289,7 +290,7 @@ async function enrichInstagramViewCounts(tabId: number): Promise<void> {
  * official Data API, so unlike every other platform this scan is driven by the selected client +
  * social account rather than whatever tab happens to be active. */
 async function scanYouTubeAccount(account: SocialAccount): Promise<void> {
-  const startDate = state.dateMode === "range" ? state.rangeStart || undefined : account.lastPullAt ? account.lastPullAt.slice(0, 10) : undefined;
+  const startDate = state.dateMode === "range" ? state.rangeStart || undefined : account.lastPullAt ? centralDateString(account.lastPullAt) : undefined;
   const endDate = state.dateMode === "range" ? state.rangeEnd || undefined : undefined;
 
   try {

@@ -7,6 +7,7 @@ import { VideoTable } from "../components/VideoTable";
 import { ManualVideoEntryModal } from "../components/ManualVideoEntryModal";
 import { LoadingBlock, ErrorBlock, StateBlock } from "../components/StateBlock";
 import { formatDisplayDate, MONTH_NAMES } from "../../shared/format";
+import { centralDateString } from "../../shared/dates";
 import type { YouTubeCategory } from "../../shared/types";
 
 const YOUTUBE_CATEGORY_LABELS: Record<YouTubeCategory, string> = {
@@ -38,8 +39,9 @@ export function SocialAccountPage() {
   const groups = useMemo(() => {
     const byYear = new Map<number, Map<number, number>>();
     for (const v of videos) {
-      const y = Number(v.publicationDate.slice(0, 4));
-      const m = Number(v.publicationDate.slice(5, 7));
+      const centralDate = centralDateString(v.publicationDate);
+      const y = Number(centralDate.slice(0, 4));
+      const m = Number(centralDate.slice(5, 7));
       if (!byYear.has(y)) byYear.set(y, new Map());
       const byMonth = byYear.get(y)!;
       byMonth.set(m, (byMonth.get(m) ?? 0) + 1);
@@ -57,10 +59,11 @@ export function SocialAccountPage() {
     return videos.filter((v) => {
       if (selectedCategory !== "all" && v.youtubeCategory !== selectedCategory) return false;
       if (selectedYear === "all") return true;
-      const y = Number(v.publicationDate.slice(0, 4));
+      const centralDate = centralDateString(v.publicationDate);
+      const y = Number(centralDate.slice(0, 4));
       if (y !== selectedYear) return false;
       if (selectedMonth === "all") return true;
-      const m = Number(v.publicationDate.slice(5, 7));
+      const m = Number(centralDate.slice(5, 7));
       return m === selectedMonth;
     });
   }, [videos, selectedYear, selectedMonth, selectedCategory]);

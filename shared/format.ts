@@ -1,3 +1,5 @@
+import { centralDateString } from "./dates";
+
 /** Formats large view counts compactly: 1250 -> "1.3K", 1250000 -> "1.3M". Full integer stays in the database. */
 export function formatViewCount(count: number): string {
   if (count < 1000) return String(count);
@@ -6,13 +8,18 @@ export function formatViewCount(count: number): string {
   return `${(count / 1_000_000_000).toFixed(1).replace(/\.0$/, "")}B`;
 }
 
-/** Formats an ISO date/datetime string as a compact display date, e.g. "Jul 15, 2026". */
+/** Formats an ISO date/datetime string as a compact display date, e.g. "Jul 15, 2026" — the day
+ * shown is the Central-time day (see shared/dates.ts), not whatever day the raw UTC instant embeds. */
 export function formatDisplayDate(iso: string | null): string {
   if (!iso) return "—";
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-  if (!match) return "—";
-  const [, y, m, d] = match;
-  const date = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+  let dateStr: string;
+  try {
+    dateStr = centralDateString(iso);
+  } catch {
+    return "—";
+  }
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
   return date.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });
 }
 
@@ -34,7 +41,7 @@ export function sanitizeForFilename(text: string): string {
 /** Suggests a "Client - Date - Title" filename (no extension), e.g.
  * "Reed Timmer - 2026-07-15 - Storm chase footage". */
 export function suggestFilename(clientName: string, publicationDateIso: string, title: string): string {
-  const date = publicationDateIso.slice(0, 10);
+  const date = centralDateString(publicationDateIso);
   return [sanitizeForFilename(clientName), date, sanitizeForFilename(title)].filter(Boolean).join(" - ");
 }
 

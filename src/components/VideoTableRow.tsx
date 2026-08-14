@@ -2,6 +2,7 @@ import { useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { formatDisplayDate, formatViewCount } from "../../shared/format";
+import { centralDateString } from "../../shared/dates";
 import { PlatformTag } from "./PlatformTag";
 import { DeadlineBadge } from "./DeadlineBadge";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -67,14 +68,14 @@ export function VideoTableRow({ video, selected, onToggleSelect, onUpdated, onDe
           <input
             type="date"
             autoFocus
-            value={draft.slice(0, 10)}
+            value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={commitEdit}
             onKeyDown={(e) => e.key === "Enter" && commitEdit()}
             disabled={saving}
           />
         ) : (
-          <span onClick={() => startEdit("publicationDate", video.publicationDate)} style={{ cursor: "text" }}>
+          <span onClick={() => startEdit("publicationDate", centralDateString(video.publicationDate))} style={{ cursor: "text" }}>
             {formatDisplayDate(video.publicationDate)}
           </span>
         )}
