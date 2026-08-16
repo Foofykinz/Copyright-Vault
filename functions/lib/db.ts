@@ -6,6 +6,7 @@ interface ClientRow {
   name: string;
   archived: number;
   affiliation_tag_id: string | null;
+  notes: string | null;
   created_at: string;
   updated_at: string;
   affiliation_tag_name?: string | null;
@@ -82,6 +83,7 @@ export function mapClient(row: ClientRow): Client {
     archived: row.archived === 1,
     affiliationTagId: row.affiliation_tag_id,
     affiliationTagName: row.affiliation_tag_name ?? null,
+    notes: row.notes,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

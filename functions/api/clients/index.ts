@@ -1,7 +1,7 @@
 import type { ApiHandler } from "../../lib/env";
 import { errorResponse, json, readJson } from "../../lib/http";
 import { generateId, nowIso } from "../../lib/ids";
-import { requireString } from "../../lib/validation";
+import { optionalString, requireString } from "../../lib/validation";
 import { getAffiliationTagOrThrow, getClientOrThrow, mapClient } from "../../lib/db";
 import type { CreateClientInput } from "../../../shared/types";
 
@@ -28,12 +28,13 @@ export const onRequestPost: ApiHandler = async (context) => {
     const name = requireString(body.name, "name", { maxLength: 200 });
     const affiliationTagId = body.affiliationTagId ? requireString(body.affiliationTagId, "affiliationTagId") : null;
     if (affiliationTagId) await getAffiliationTagOrThrow(db, affiliationTagId);
+    const notes = optionalString(body.notes);
 
     const id = generateId();
     const now = nowIso();
     await db
-      .prepare("INSERT INTO clients (id, name, archived, affiliation_tag_id, created_at, updated_at) VALUES (?, ?, 0, ?, ?, ?)")
-      .bind(id, name, affiliationTagId, now, now)
+      .prepare("INSERT INTO clients (id, name, archived, affiliation_tag_id, notes, created_at, updated_at) VALUES (?, ?, 0, ?, ?, ?, ?)")
+      .bind(id, name, affiliationTagId, notes, now, now)
       .run();
     return json({ client: await getClientOrThrow(db, id) }, { status: 201 });
   } catch (err) {

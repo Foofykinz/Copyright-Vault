@@ -17,6 +17,7 @@ import * as socialAccountById from "../functions/api/social-accounts/byId";
 import * as socialAccountVideos from "../functions/api/social-accounts/byId/videos";
 import * as socialAccountVideosExport from "../functions/api/social-accounts/byId/videos/export";
 import * as videoById from "../functions/api/videos/byId";
+import * as videoDeadlines from "../functions/api/videos/deadlines";
 import * as combinationFoldersIndex from "../functions/api/combination-folders/index";
 import * as combinationFolderById from "../functions/api/combination-folders/byId";
 import * as combinationFolderVideos from "../functions/api/combination-folders/byId/videos";
@@ -62,6 +63,9 @@ register("/api/clients/:id/rights-manager-history", clientRightsManagerHistory);
 register("/api/social-accounts/:id", socialAccountById);
 register("/api/social-accounts/:id/videos", socialAccountVideos);
 register("/api/social-accounts/:id/videos/export", socialAccountVideosExport);
+// Registered before /api/videos/:id -- this router matches in registration order, and ":id" would
+// otherwise swallow "deadlines" as a video id.
+register("/api/videos/deadlines", videoDeadlines);
 register("/api/videos/:id", videoById);
 register("/api/combination-folders", combinationFoldersIndex);
 register("/api/combination-folders/:id", combinationFolderById);

@@ -26,6 +26,7 @@ export interface Client {
   archived: boolean;
   affiliationTagId: string | null;
   affiliationTagName: string | null;
+  notes: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -189,17 +190,35 @@ export interface DashboardStats {
   infringementsByStatus: Record<InfringementStatus, number>;
 }
 
+/** A lean, read-only cross-client row for the Deadlines page — deliberately not VideoWithDeadline
+ * (which carries folders/editing-oriented fields meant for a single account's table). */
+export interface DeadlineVideo {
+  id: string;
+  clientId: string;
+  clientName: string;
+  socialAccountId: string;
+  platform: Platform;
+  videoUrl: string;
+  caption: string | null;
+  publicationDate: string;
+  registrationDeadline: string;
+  daysRemaining: number;
+  deadlineStatus: DeadlineStatus;
+}
+
 // ---- API request payloads ----
 
 export interface CreateClientInput {
   name: string;
   affiliationTagId?: string | null;
+  notes?: string | null;
 }
 
 export interface UpdateClientInput {
   name?: string;
   archived?: boolean;
   affiliationTagId?: string | null;
+  notes?: string | null;
 }
 
 export interface CreateAffiliationTagInput {

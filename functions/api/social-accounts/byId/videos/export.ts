@@ -13,7 +13,7 @@ function csvField(value: string): string {
   return value;
 }
 
-const CSV_HEADER = ["Client Name", "Platform", "Post URL", "Post Title", "Description", "Date Posted"];
+const CSV_HEADER = ["Client Name", "Platform", "Live", "Post URL", "Post Title", "Description", "Views", "Date Posted"];
 
 interface ExportRow {
   client_name: string;
@@ -21,6 +21,8 @@ interface ExportRow {
   video_url: string;
   caption: string | null;
   publication_date: string;
+  view_count: number;
+  youtube_category: string | null;
 }
 
 /**
@@ -44,7 +46,8 @@ export const onRequestGet: ApiHandler = async (context) => {
 
     const rows = await context.env.DB.prepare(
       `SELECT c.name as client_name, v.platform as platform, v.video_url as video_url,
-              v.caption as caption, v.publication_date as publication_date
+              v.caption as caption, v.publication_date as publication_date,
+              v.view_count as view_count, v.youtube_category as youtube_category
        FROM videos v
        JOIN clients c ON c.id = v.client_id
        WHERE v.social_account_id = ?
@@ -64,13 +67,19 @@ export const onRequestGet: ApiHandler = async (context) => {
 
     const lines = [CSV_HEADER.map(csvField).join(",")];
     for (const row of rows.results) {
+      // "Live" is only ever known for YouTube (the only platform this app classifies as
+      // Short/Live/Upload) — left blank rather than a false "No" for every other platform, which
+      // has no live/non-live detection at all.
+      const live = row.youtube_category === null ? "" : row.youtube_category === "live" ? "Yes" : "No";
       lines.push(
         [
           csvField(row.client_name),
           csvField(PLATFORM_LABELS[row.platform as Platform] ?? row.platform),
+          csvField(live),
           csvField(row.video_url),
           csvField(row.caption ?? ""),
           csvField(""),
+          csvField(String(row.view_count)),
           csvField(centralDateString(row.publication_date)),
         ].join(",")
       );

@@ -2,7 +2,7 @@ import type { ApiHandler } from "../../lib/env";
 import { errorResponse, json, readJson } from "../../lib/http";
 import { nowIso } from "../../lib/ids";
 import { getAffiliationTagOrThrow, getClientOrThrow } from "../../lib/db";
-import { requireString } from "../../lib/validation";
+import { optionalString, requireString } from "../../lib/validation";
 import type { UpdateClientInput } from "../../../shared/types";
 
 export const onRequestGet: ApiHandler = async (context) => {
@@ -35,6 +35,10 @@ export const onRequestPatch: ApiHandler = async (context) => {
       if (body.affiliationTagId) await getAffiliationTagOrThrow(context.env.DB, body.affiliationTagId);
       updates.push("affiliation_tag_id = ?");
       values.push(body.affiliationTagId);
+    }
+    if (body.notes !== undefined) {
+      updates.push("notes = ?");
+      values.push(optionalString(body.notes));
     }
     if (updates.length === 0) {
       const client = await getClientOrThrow(context.env.DB, id);

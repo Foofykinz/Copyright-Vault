@@ -69,6 +69,12 @@ export function ClientPage() {
         </div>
       </div>
 
+      {client.notes && (
+        <div className="panel" style={{ marginBottom: 16, whiteSpace: "pre-wrap" }}>
+          {client.notes}
+        </div>
+      )}
+
       {stats && (
         <div className="stats-strip">
           <div className="stat-tile">

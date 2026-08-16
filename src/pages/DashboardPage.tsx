@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useAsync } from "../hooks/useAsync";
 import { api } from "../lib/api";
 import { Breadcrumb } from "../components/Breadcrumb";
@@ -57,11 +58,17 @@ export function DashboardPage() {
           <div className="field" style={{ marginTop: 24 }}>
             <h2 className="page-subtitle">Videos by registration deadline</h2>
             <div className="stat-breakdown">
-              {DEADLINE_STATUSES.map((s) => (
-                <span key={s} className={`badge badge-${s}`}>
-                  {DEADLINE_STATUS_LABELS[s]}: {stats.videosByDeadlineStatus[s].toLocaleString()}
-                </span>
-              ))}
+              {DEADLINE_STATUSES.map((s) =>
+                s === "neutral" ? (
+                  <span key={s} className={`badge badge-${s}`}>
+                    {DEADLINE_STATUS_LABELS[s]}: {stats.videosByDeadlineStatus[s].toLocaleString()}
+                  </span>
+                ) : (
+                  <Link key={s} to={`/deadlines?status=${s}`} className={`badge badge-${s}`}>
+                    {DEADLINE_STATUS_LABELS[s]}: {stats.videosByDeadlineStatus[s].toLocaleString()}
+                  </Link>
+                )
+              )}
             </div>
           </div>
 

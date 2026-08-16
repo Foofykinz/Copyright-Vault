@@ -9,6 +9,7 @@ import { CombinationFolderPage } from "./pages/CombinationFolderPage";
 import { RightsManagerHistoryPage } from "./pages/RightsManagerHistoryPage";
 import { InfringementReportsPage } from "./pages/InfringementReportsPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { DeadlinesPage } from "./pages/DeadlinesPage";
 import { ExtensionPage } from "./pages/ExtensionPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage";
@@ -49,6 +50,7 @@ export default function App() {
             <Route path="/clients/:clientId/rights-manager" element={<RightsManagerHistoryPage />} />
             <Route path="/infringements" element={<InfringementReportsPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/deadlines" element={<DeadlinesPage />} />
             <Route path="/extension" element={<ExtensionPage />} />
           </Routes>
         </div>

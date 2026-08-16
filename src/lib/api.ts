@@ -12,6 +12,7 @@ import type {
   CreateInfringementReportInput,
   CreateVideoInput,
   DashboardStats,
+  DeadlineVideo,
   InfringementReportWithNames,
   MarkRightsManagerSentResult,
   RightsManagerBatchWithVideos,
@@ -90,6 +91,8 @@ export const api = {
       post<{ video: VideoWithDeadline }>(`/social-accounts/${socialAccountId}/videos`, input),
     update: (id: string, input: UpdateVideoInput) => patch<{ video: VideoWithDeadline }>(`/videos/${id}`, input),
     remove: (id: string) => del(`/videos/${id}`),
+    deadlines: (status?: string) =>
+      request<{ videos: DeadlineVideo[] }>(`/videos/deadlines${status ? `?status=${status}` : ""}`),
   },
   metadata: {
     lookup: (url: string) => request<{ metadata: VideoMetadataResult }>(`/metadata?url=${encodeURIComponent(url)}`),

@@ -12,6 +12,7 @@ interface ClientFormModalProps {
 export function ClientFormModal({ client, onSave, onClose }: ClientFormModalProps) {
   const [name, setName] = useState(client?.name ?? "");
   const [affiliationTagId, setAffiliationTagId] = useState<string | null>(client?.affiliationTagId ?? null);
+  const [notes, setNotes] = useState(client?.notes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -24,7 +25,7 @@ export function ClientFormModal({ client, onSave, onClose }: ClientFormModalProp
     setBusy(true);
     setError(null);
     try {
-      await onSave({ name: name.trim(), affiliationTagId });
+      await onSave({ name: name.trim(), affiliationTagId, notes: notes.trim() || null });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save client.");
@@ -50,6 +51,16 @@ export function ClientFormModal({ client, onSave, onClose }: ClientFormModalProp
         <div className="field">
           <label>Affiliation</label>
           <AffiliationTagPicker value={affiliationTagId} onChange={setAffiliationTagId} />
+        </div>
+        <div className="field">
+          <label htmlFor="client-notes">Notes</label>
+          <textarea
+            id="client-notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={4}
+            placeholder="Anything the team should know about this client…"
+          />
         </div>
         <div className="modal-footer">
           <button type="button" className="btn" onClick={onClose} disabled={busy}>
