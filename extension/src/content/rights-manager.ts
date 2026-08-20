@@ -76,6 +76,23 @@ if (location.pathname.includes("/rights_manager/")) {
     return document.querySelector<HTMLAnchorElement>('a[target="_blank"][href]')?.href ?? null;
   }
 
+  /** Facebook wraps outbound links (confirmed live: an Instagram permalink surfaced on a
+   * cross-posted match came back this way) in its own l.facebook.com/l.php?u=<encoded-url>&h=...
+   * redirector rather than the real destination. Unwraps to the real URL when the link is shaped
+   * like that; returns the input unchanged for anything else, so a normal facebook.com/watch or
+   * instagram.com permalink passes straight through. Applied to every infringingUrl this file
+   * produces, not just the DOM-scraped one — no confirmation yet that the network-captured
+   * permalink_url is never wrapped the same way. */
+  function unwrapFacebookRedirect(url: string): string {
+    try {
+      const parsed = new URL(url);
+      if (!parsed.hostname.endsWith("facebook.com") || parsed.pathname !== "/l.php") return url;
+      return parsed.searchParams.get("u") || url;
+    } catch {
+      return url;
+    }
+  }
+
   /** "16" / "16,723" / "1.2K" → a plain integer, or null if it can't be parsed. Best-effort only —
    * this is the fallback path for when network-captured data isn't available. */
   function parseCount(text: string | null): number | null {
@@ -101,6 +118,19 @@ if (location.pathname.includes("/rights_manager/")) {
     return raw === "IG" ? "instagram" : "facebook";
   }
 
+  /** DOM-only fallback has no platform field to read (that only exists on the network-captured
+   * asset) — previously hardcoded to "facebook" unconditionally, which was wrong for a
+   * cross-posted Instagram video (confirmed live: the unwrapped link pointed at instagram.com).
+   * Now that unwrapFacebookRedirect gives us the real destination, detect from its host instead. */
+  function detectPlatformFromUrl(url: string): "facebook" | "instagram" {
+    try {
+      const hostname = new URL(url).hostname.replace(/^www\./, "");
+      return hostname === "instagram.com" ? "instagram" : "facebook";
+    } catch {
+      return "facebook";
+    }
+  }
+
   function mapReferenceFiles(raw: RawCopyrightMatch): CapturedReferenceFile[] {
     const files: CapturedReferenceFile[] = [];
     for (const entry of raw.match_data ?? []) {
@@ -115,8 +145,9 @@ if (location.pathname.includes("/rights_manager/")) {
     const asset = raw.matched_video_asset;
     if (!asset) return { ok: false, error: "Match data is missing video details — try again after the page finishes loading." };
 
-    const infringingUrl = asset.permalink_url || (asset.video_id ? `https://www.facebook.com/watch/?v=${asset.video_id}` : null) || readInfringingLink();
-    if (!infringingUrl) return { ok: false, error: "Couldn't determine a link for the infringing video." };
+    const rawInfringingUrl = asset.permalink_url || (asset.video_id ? `https://www.facebook.com/watch/?v=${asset.video_id}` : null) || readInfringingLink();
+    if (!rawInfringingUrl) return { ok: false, error: "Couldn't determine a link for the infringing video." };
+    const infringingUrl = unwrapFacebookRedirect(rawInfringingUrl);
 
     const postedAt = asset.published_time !== undefined ? new Date(asset.published_time * 1000).toISOString() : parseDomDate();
     if (!postedAt) return { ok: false, error: "Couldn't determine a posted date for this match." };
@@ -155,8 +186,9 @@ if (location.pathname.includes("/rights_manager/")) {
    * fields the original standalone tool read — everything it could get is still better than
    * failing outright, and infringerName is left editable in the review card either way. */
   function mapMatchFromDomOnly(matchId: string): CollectMatchResult {
-    const infringingUrl = readInfringingLink();
-    if (!infringingUrl) return { ok: false, error: "Couldn't find a link for the infringing video on this page." };
+    const rawInfringingUrl = readInfringingLink();
+    if (!rawInfringingUrl) return { ok: false, error: "Couldn't find a link for the infringing video on this page." };
+    const infringingUrl = unwrapFacebookRedirect(rawInfringingUrl);
 
     const postedAt = parseDomDate();
     if (!postedAt) return { ok: false, error: "Couldn't find/parse a posted date on this page." };
@@ -166,7 +198,7 @@ if (location.pathname.includes("/rights_manager/")) {
       metaVideoId: readLabeledValue("Video ID"),
       infringerName: "Unknown",
       infringingUrl,
-      platform: "facebook",
+      platform: detectPlatformFromUrl(infringingUrl),
       postedAt,
       notes: "",
       matchDurationSec: parseDurationSeconds(readLabeledValue("Match duration")),
@@ -187,6 +219,22 @@ if (location.pathname.includes("/rights_manager/")) {
     }
 
     const raw = capturedMatchesById.get(matchId) ?? capturedMatchesByVideoId.get(matchId) ?? capturedMatchesByCopyrightId.get(matchId);
+    if (!raw) {
+      // Falling back to the weaker DOM-only path (no infringer name/views/followers/reference
+      // files, platform guessed from the link). Whether the page-displayed "Match ID" actually
+      // corresponds to any of the three candidate id fields on the network-captured records is
+      // still unconfirmed (see the map declarations above) -- this is the evidence needed to
+      // settle it next time it happens. Open DevTools' console on business.facebook.com to see it.
+      console.warn(
+        "[viral-drm] Rights Manager match capture: no network-captured record matched the page's Match ID.",
+        {
+          displayedMatchId: matchId,
+          knownActiveMatchDataIds: [...capturedMatchesById.keys()],
+          knownVideoIds: [...capturedMatchesByVideoId.keys()],
+          knownVideoCopyrightIds: [...capturedMatchesByCopyrightId.keys()],
+        }
+      );
+    }
     return raw ? mapMatchFromNetwork(matchId, raw) : mapMatchFromDomOnly(matchId);
   }
 
