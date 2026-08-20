@@ -1,2 +1,7 @@
-- Fixed a misleading error message shown after a successful match capture whose screenshot step failed — a captured match is now kept (and still sendable without a screenshot) instead of being masked by an unrelated error, and the error shown now reflects what actually failed
-- No other changes since 1.2.0
+- New: capture Rights Manager matches directly from business.facebook.com. Open a match's detail
+  view, hit "Capture this match" in the side panel, review/edit it, and send — it shows up on the
+  Copyright Vault site's new Rights Manager tab with a full-page screenshot attached
+- New: mark whether the infringing video is still available while reviewing a captured match
+- Fixed a misleading error message shown after a successful match capture whose screenshot step
+  failed — a captured match is now kept (and still sendable without a screenshot) instead of being
+  masked by an unrelated error, and the error shown now reflects what actually failed
