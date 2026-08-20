@@ -302,6 +302,10 @@ async function saveSettings(apiBaseUrl: string, apiToken: string): Promise<void>
     return;
   }
 
+  // Now effectively a no-op that always resolves true -- manifest.json's host_permissions is
+  // "<all_urls>" (needed for chrome.tabs.captureVisibleTab during screenshot capture, which
+  // doesn't accept a scoped host permission the way chrome.scripting.executeScript does). Left in
+  // place as a harmless safety net in case host_permissions is ever narrowed again.
   const granted = await chrome.permissions.request({ origins: [`${origin}/*`] });
   if (!granted) {
     state.error = "Permission to reach that URL wasn't granted, so the extension can't call the API.";
@@ -643,10 +647,14 @@ async function sendSelected(): Promise<void> {
  * exact multiple of the viewport height would otherwise get a misaligned/duplicated strip at the
  * bottom. Restores whatever zoom the tab actually had beforehand, not a hardcoded 1.
  *
- * Requires a real (not just activeTab) host permission for the tab's origin — chrome.scripting.
- * executeScript below throws "Cannot access contents of url... Extension manifest must request
- * permission to access this host" without one. Having business.facebook.com/* in content_scripts'
- * matches is NOT enough on its own (that only covers declarative injection at page load); see
+ * Needs the "<all_urls>" host permission, not just activeTab or a scoped host permission for this
+ * one origin — two different Chrome APIs are involved with two different rules here:
+ * chrome.scripting.executeScript accepts a scoped host permission (e.g. business.facebook.com/*),
+ * but chrome.tabs.captureVisibleTab specifically requires either "<all_urls>" or a currently-valid
+ * activeTab grant (which isn't reliable in a side panel that stays open across navigations — see
+ * facebookPollTick's comment on that). A scoped host_permissions entry alone throws "Cannot access
+ * contents of url..." on the executeScript calls; without "<all_urls>" specifically, captureVisibleTab
+ * separately throws "Either the '<all_urls>' or 'activeTab' permission is required." See
  * manifest.json's host_permissions. */
 async function captureFullPageScreenshot(tabId: number, windowId: number): Promise<string> {
   const originalZoom = await chrome.tabs.getZoom(tabId);
