@@ -1,5 +1,8 @@
 export interface Env {
   DB: D1Database;
+  /** Rights Manager match screenshots captured by the extension — see
+   * functions/api/extension/infringement-reports.ts and functions/api/infringement-reports/byId/screenshot.ts. */
+  SCREENSHOTS: R2Bucket;
   /** Optional shared secret the future browser extension authenticates with. Unset in local dev. */
   EXTENSION_API_TOKEN?: string;
   /** Optional YouTube Data API v3 key. Without it, YouTube metadata lookup is unavailable. */

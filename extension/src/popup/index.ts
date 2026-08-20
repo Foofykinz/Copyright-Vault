@@ -2,7 +2,16 @@ import { getConfig, updateConfig } from "../lib/storage";
 import { getSession, updateSession, type DateMode } from "../lib/session";
 import { extensionApi } from "../lib/api";
 import { ENRICH_VIEW_COUNTS_MESSAGE, SCAN_MESSAGE, type EnrichViewCountsResult, type ScanResult, type ScrapedVideo } from "../lib/scraped";
-import type { Client, ExtensionVideoImportInput, Platform, SocialAccount, YouTubeClassificationStatus } from "../../../shared/types";
+import { COLLECT_CURRENT_MATCH_MESSAGE, type CapturedMatch, type CollectMatchResult } from "../lib/rights-manager-scraped";
+import type {
+  Client,
+  ExtensionInfringementReportImportInput,
+  ExtensionVideoImportInput,
+  Platform,
+  RightsManagerAccount,
+  SocialAccount,
+  YouTubeClassificationStatus,
+} from "../../../shared/types";
 import { PLATFORM_LABELS } from "../../../shared/types";
 import { suggestFilename } from "../../../shared/format";
 import { centralDateString } from "../../../shared/dates";
@@ -48,6 +57,18 @@ interface State {
   busy: boolean;
   /** Set only after a YouTube scan; drives the compact scan summary. Null for every other platform. */
   youtubeScan: { channelTitle: string; classificationStatus: YouTubeClassificationStatus } | null;
+
+  // ---- Rights Manager match capture (business.facebook.com/*/rights_manager/*) ----
+  // A completely separate flow from the video-import state above: one match captured, reviewed,
+  // and sent at a time, rather than a multi-select scan list. See renderRightsManagerView().
+  isRightsManager: boolean;
+  rightsManagerAccounts: RightsManagerAccount[];
+  selectedRightsManagerAccountId: string;
+  capturedMatch: CapturedMatch | null;
+  matchScreenshotDataUrl: string | null;
+  capturingMatch: boolean;
+  matchError: string | null;
+  matchStatus: string | null;
 }
 
 const state: State = {
@@ -72,7 +93,26 @@ const state: State = {
   showSettings: false,
   busy: false,
   youtubeScan: null,
+
+  isRightsManager: false,
+  rightsManagerAccounts: [],
+  selectedRightsManagerAccountId: "",
+  capturedMatch: null,
+  matchScreenshotDataUrl: null,
+  capturingMatch: false,
+  matchError: null,
+  matchStatus: null,
 };
+
+function isRightsManagerTab(url: string | undefined): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.replace(/^www\./, "") === "business.facebook.com" && parsed.pathname.includes("/rights_manager/");
+  } catch {
+    return false;
+  }
+}
 
 function detectTabPlatform(url: string | undefined): Platform | null {
   if (!url) return null;
@@ -179,6 +219,21 @@ async function loadClients(): Promise<void> {
   }
 }
 
+async function loadRightsManagerAccounts(): Promise<void> {
+  try {
+    const { rightsManagerAccounts } = await extensionApi.listRightsManagerAccounts({
+      apiBaseUrl: state.apiBaseUrl,
+      apiToken: state.apiToken,
+    });
+    state.rightsManagerAccounts = rightsManagerAccounts;
+    if (!state.selectedRightsManagerAccountId && rightsManagerAccounts.length > 0) {
+      state.selectedRightsManagerAccountId = rightsManagerAccounts[0].id;
+    }
+  } catch (err) {
+    state.matchError = err instanceof Error ? err.message : "Couldn't load Rights Manager accounts.";
+  }
+}
+
 function persistSession(): void {
   void updateSession({
     selectedClientId: state.selectedClientId,
@@ -224,6 +279,7 @@ async function init(): Promise<void> {
   const tab = await activeTab();
   state.tabPlatform = detectTabPlatform(tab?.url);
   state.tabUrl = tab?.url ?? null;
+  state.isRightsManager = isRightsManagerTab(tab?.url);
 
   if (!state.apiBaseUrl || !state.apiToken) {
     state.showSettings = true;
@@ -232,6 +288,7 @@ async function init(): Promise<void> {
   }
 
   await loadClients();
+  if (state.isRightsManager) await loadRightsManagerAccounts();
   render();
 }
 
@@ -358,6 +415,7 @@ async function refreshActiveTabInfo(): Promise<chrome.tabs.Tab | undefined> {
   if (tab?.url !== state.tabUrl) state.mismatchAcknowledged = false;
   state.tabPlatform = detectTabPlatform(tab?.url);
   state.tabUrl = tab?.url ?? null;
+  state.isRightsManager = isRightsManagerTab(tab?.url);
   return tab;
 }
 
@@ -475,11 +533,18 @@ async function facebookPollTick(): Promise<void> {
   facebookPollInFlight = true;
   try {
     const previousPlatform = state.tabPlatform;
+    const previousIsRightsManager = state.isRightsManager;
     const tab = await refreshActiveTabInfo();
-    let changed = state.tabPlatform !== previousPlatform;
+    let changed = state.tabPlatform !== previousPlatform || state.isRightsManager !== previousIsRightsManager;
 
     if (state.tabPlatform === "facebook" && tab?.id) {
       changed = (await pollFacebookTab(tab.id)) || changed;
+    }
+    // Side panel stays open across navigation — switching onto a Rights Manager tab without ever
+    // closing it means loadRightsManagerAccounts() never ran (init() only runs once, at open).
+    if (state.isRightsManager && state.rightsManagerAccounts.length === 0 && !state.capturingMatch) {
+      await loadRightsManagerAccounts();
+      changed = true;
     }
     if (changed) render();
   } finally {
@@ -568,6 +633,171 @@ async function sendSelected(): Promise<void> {
     `Sent ${succeeded} new video${succeeded === 1 ? "" : "s"}` +
     (duplicates > 0 ? `, ${duplicates} already imported (skipped)` : "") +
     (failed > 0 ? `. ${failed} failed — still listed below, safe to retry.` : ".");
+  render();
+}
+
+/** Ported from the old standalone tool's captureFullPage, with two bugs fixed: (1) setZoom is
+ * awaited before measuring/scrolling/capturing anything, instead of racing with the very next
+ * step; (2) each screenshot is placed on the canvas at the *actual* scroll position achieved (read
+ * back right after scrolling), not the nominal requested offset — a page whose height isn't an
+ * exact multiple of the viewport height would otherwise get a misaligned/duplicated strip at the
+ * bottom. Restores whatever zoom the tab actually had beforehand, not a hardcoded 1. */
+async function captureFullPageScreenshot(tabId: number, windowId: number): Promise<string> {
+  const originalZoom = await chrome.tabs.getZoom(tabId);
+  await chrome.tabs.setZoom(tabId, 0.5);
+
+  try {
+    const [{ result: dims }] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => ({
+        width: document.documentElement.scrollWidth,
+        height: document.documentElement.scrollHeight,
+        windowWidth: window.innerWidth,
+        windowHeight: window.innerHeight,
+      }),
+    });
+    const { width, height, windowWidth, windowHeight } = dims as {
+      width: number;
+      height: number;
+      windowWidth: number;
+      windowHeight: number;
+    };
+
+    const screenshots: { y: number; dataUrl: string }[] = [];
+    let requestedY = 0;
+    let lastCapturedY = -1;
+
+    for (;;) {
+      const [{ result: actualY }] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (y: number) => {
+          window.scrollTo(0, y);
+          return window.scrollY;
+        },
+        args: [requestedY],
+      });
+      if (actualY === lastCapturedY) break; // no further scroll room — already captured this position
+
+      const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
+      screenshots.push({ y: actualY as number, dataUrl });
+      lastCapturedY = actualY as number;
+
+      if ((actualY as number) + windowHeight >= height) break; // just captured the bottom
+      requestedY += windowHeight;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d")!;
+    for (const shot of screenshots) {
+      const img = new Image();
+      img.src = shot.dataUrl;
+      await new Promise<void>((resolve) => (img.onload = () => resolve()));
+      ctx.drawImage(img, 0, shot.y, windowWidth, windowHeight);
+    }
+    return canvas.toDataURL("image/png");
+  } finally {
+    await chrome.tabs.setZoom(tabId, originalZoom);
+  }
+}
+
+async function collectCurrentMatch(): Promise<void> {
+  const tab = await activeTab();
+  if (!tab?.id || tab.windowId === undefined) {
+    state.matchError = "No active tab found.";
+    render();
+    return;
+  }
+
+  state.capturingMatch = true;
+  state.matchError = null;
+  state.matchStatus = null;
+  render();
+
+  let result: CollectMatchResult | undefined;
+  try {
+    result = (await chrome.tabs.sendMessage(tab.id, { type: COLLECT_CURRENT_MATCH_MESSAGE })) as CollectMatchResult | undefined;
+  } catch (err) {
+    // Real error text surfaced (not a fixed guess) — most likely cause is no content script on
+    // this tab yet (wrong page, or extension just updated and the tab needs a refresh), but
+    // showing what Chrome actually reported beats asserting that when it might not be true.
+    state.matchError = `Couldn't reach the page: ${err instanceof Error ? err.message : String(err)}`;
+    state.capturingMatch = false;
+    render();
+    return;
+  }
+
+  if (!result) {
+    state.matchError = "Got an unexpected response from the page.";
+  } else if (!result.ok) {
+    state.matchError = result.error;
+  } else {
+    // Match capture succeeded — this is kept even if the screenshot step below fails, since the
+    // screenshot is optional server-side and a failure there shouldn't discard a good capture.
+    state.capturedMatch = result.match;
+    try {
+      state.matchScreenshotDataUrl = await captureFullPageScreenshot(tab.id, tab.windowId);
+    } catch (err) {
+      state.matchError = `Match captured, but the screenshot failed: ${err instanceof Error ? err.message : String(err)}. You can still send without one.`;
+    }
+  }
+
+  state.capturingMatch = false;
+  render();
+}
+
+async function sendCapturedMatch(): Promise<void> {
+  const match = state.capturedMatch;
+  if (!match) return;
+  if (!state.selectedRightsManagerAccountId) {
+    state.matchError = "Choose a Rights Manager account first.";
+    render();
+    return;
+  }
+
+  state.busy = true;
+  state.matchError = null;
+  render();
+
+  const input: ExtensionInfringementReportImportInput = {
+    clientId: state.selectedClientId || null,
+    rightsManagerAccountId: state.selectedRightsManagerAccountId,
+    infringerName: match.infringerName,
+    infringingUrl: match.infringingUrl,
+    platform: match.platform,
+    postedAt: match.postedAt,
+    notes: match.notes || null,
+    metaMatchId: match.metaMatchId,
+    metaVideoId: match.metaVideoId,
+    matchDurationSec: match.matchDurationSec,
+    videoViewCount: match.videoViewCount,
+    pageFollowerCount: match.pageFollowerCount,
+    isAccountPrivate: match.isAccountPrivate,
+    infringerProfileUrl: match.infringerProfileUrl,
+    referenceFiles: match.referenceFiles,
+    screenshotDataUrl: state.matchScreenshotDataUrl,
+    videoAvailable: match.videoAvailable,
+  };
+
+  try {
+    const result = await extensionApi.importInfringementReport({ apiBaseUrl: state.apiBaseUrl, apiToken: state.apiToken }, input);
+    state.matchStatus = result.duplicate ? "This match was already logged — no new record created." : "Sent.";
+    state.capturedMatch = null;
+    state.matchScreenshotDataUrl = null;
+  } catch (err) {
+    state.matchError = err instanceof Error ? err.message : "Failed to send.";
+  } finally {
+    state.busy = false;
+    render();
+  }
+}
+
+function discardCapturedMatch(): void {
+  state.capturedMatch = null;
+  state.matchScreenshotDataUrl = null;
+  state.matchError = null;
+  state.matchStatus = null;
   render();
 }
 
@@ -778,6 +1008,126 @@ function renderYoutubeSummary(visible: ScrapedVideo[]): HTMLElement | null {
   ]);
 }
 
+function renderMatchReviewCard(match: CapturedMatch): HTMLElement {
+  const container = el("div", { className: "field" });
+
+  const nameField = el("div", { className: "field" }, [el("label", { textContent: "Infringer name" }), el("input", { type: "text", value: match.infringerName })]);
+  (nameField.querySelector("input") as HTMLInputElement).addEventListener("input", (e) => {
+    match.infringerName = (e.target as HTMLInputElement).value;
+  });
+
+  const notesField = el("div", { className: "field" }, [el("label", { textContent: "Notes" }), el("textarea", { value: match.notes, rows: 3 })]);
+  (notesField.querySelector("textarea") as HTMLTextAreaElement).addEventListener("input", (e) => {
+    match.notes = (e.target as HTMLTextAreaElement).value;
+  });
+
+  // Nothing on the page states this directly, so it's never scraped — left for whoever's
+  // reviewing the match to set, same as infringerName/notes above. Defaults to "Unknown" and stays
+  // that way if left untouched; the server stores it as a nullable tri-state either way.
+  const availabilityField = el("div", { className: "field" }, [
+    el("label", { textContent: "Video available" }),
+    el("select", {}, [
+      el("option", { value: "", textContent: "Unknown", selected: match.videoAvailable === null }),
+      el("option", { value: "true", textContent: "Available", selected: match.videoAvailable === true }),
+      el("option", { value: "false", textContent: "Not available", selected: match.videoAvailable === false }),
+    ]),
+  ]);
+  (availabilityField.querySelector("select") as HTMLSelectElement).addEventListener("change", (e) => {
+    const value = (e.target as HTMLSelectElement).value;
+    match.videoAvailable = value === "" ? null : value === "true";
+  });
+
+  const privacyNote = match.isAccountPrivate
+    ? el("div", {
+        className: "warning",
+        textContent: "🔒 Private account — Meta withholds the infringer's identity for these, and they're usually released rather than logged. Double-check before sending.",
+      })
+    : null;
+
+  const referenceLine =
+    match.referenceFiles.length > 0 ? `Reference files: ${match.referenceFiles.map((f) => f.title).join(", ")}` : "Reference files: —";
+  const readOnly = el("div", { className: "hint" }, [
+    el("div", { textContent: `Match ID: ${match.metaMatchId}` }),
+    el("div", { textContent: `Video ID: ${match.metaVideoId ?? "—"}` }),
+    el("div", { textContent: `Platform: ${PLATFORM_LABELS[match.platform]}  ·  Posted: ${new Date(match.postedAt).toLocaleDateString()}` }),
+    el("div", {
+      textContent: `Match duration: ${match.matchDurationSec !== null ? `${match.matchDurationSec}s` : "—"}  ·  Views: ${match.videoViewCount ?? "—"}  ·  Followers: ${match.pageFollowerCount ?? "—"}`,
+    }),
+    el("div", { textContent: referenceLine }),
+  ]);
+
+  const screenshot = state.matchScreenshotDataUrl ? el("img", { src: state.matchScreenshotDataUrl }) : null;
+
+  const sendBtn = el("button", { className: "primary", textContent: state.busy ? "Sending…" : "Send", disabled: state.busy });
+  sendBtn.addEventListener("click", () => void sendCapturedMatch());
+
+  const discardBtn = el("button", { textContent: "Discard", disabled: state.busy });
+  discardBtn.addEventListener("click", () => discardCapturedMatch());
+
+  container.append(nameField, notesField, availabilityField);
+  if (privacyNote) container.appendChild(privacyNote);
+  container.appendChild(readOnly);
+  if (screenshot) container.appendChild(screenshot);
+  container.append(sendBtn, discardBtn);
+
+  return container;
+}
+
+function renderRightsManagerView(): HTMLElement {
+  const container = el("div");
+
+  container.appendChild(el("div", { className: "hint", textContent: "Detected: Rights Manager match" }));
+
+  const accountField = el("div", { className: "field" }, [
+    el("label", { textContent: "Rights Manager account" }),
+    el(
+      "select",
+      { id: "rm-account-select" },
+      state.rightsManagerAccounts.map((a) => el("option", { value: a.id, textContent: a.name, selected: a.id === state.selectedRightsManagerAccountId }))
+    ),
+  ]);
+  const accountSelect = accountField.querySelector("select") as HTMLSelectElement;
+  accountSelect.addEventListener("change", () => {
+    state.selectedRightsManagerAccountId = accountSelect.value;
+  });
+
+  const clientOptions = [el("option", { value: "", textContent: "—", selected: state.selectedClientId === "" })].concat(
+    state.clients.map((c) => el("option", { value: c.id, textContent: c.name, selected: c.id === state.selectedClientId }))
+  );
+  const clientField = el("div", { className: "field" }, [el("label", { textContent: "Client (optional)" }), el("select", { id: "rm-client-select" }, clientOptions)]);
+  const clientSelect = clientField.querySelector("select") as HTMLSelectElement;
+  clientSelect.addEventListener("change", () => {
+    state.selectedClientId = clientSelect.value;
+  });
+
+  container.append(accountField, clientField);
+
+  if (!state.capturedMatch) {
+    const captureBtn = el("button", {
+      className: "primary",
+      textContent: state.capturingMatch ? "Capturing…" : "Capture this match",
+      disabled: state.capturingMatch || !state.selectedRightsManagerAccountId,
+    });
+    captureBtn.addEventListener("click", () => void collectCurrentMatch());
+    container.appendChild(captureBtn);
+  } else {
+    container.appendChild(renderMatchReviewCard(state.capturedMatch));
+  }
+
+  if (state.matchStatus) container.appendChild(el("div", { className: "hint", textContent: state.matchStatus }));
+  if (state.matchError) container.appendChild(el("div", { className: "error", textContent: state.matchError }));
+
+  container.appendChild(el("hr"));
+  const settingsLink = el("button", { textContent: "Settings" });
+  settingsLink.addEventListener("click", () => {
+    state.showSettings = true;
+    render();
+  });
+  container.appendChild(settingsLink);
+
+  return container;
+}
+
 function renderMainView(): HTMLElement {
   const container = el("div");
 
@@ -939,6 +1289,10 @@ function render(): void {
   appRoot.innerHTML = "";
   if (state.showSettings || !state.apiBaseUrl || !state.apiToken) {
     appRoot.appendChild(renderSettingsView());
+    return;
+  }
+  if (state.isRightsManager) {
+    appRoot.appendChild(renderRightsManagerView());
     return;
   }
   appRoot.appendChild(renderMainView());

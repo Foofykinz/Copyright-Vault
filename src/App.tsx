@@ -7,6 +7,7 @@ import { SocialAccountPage } from "./pages/SocialAccountPage";
 import { ClientCombinationFoldersPage } from "./pages/ClientCombinationFoldersPage";
 import { CombinationFolderPage } from "./pages/CombinationFolderPage";
 import { RightsManagerHistoryPage } from "./pages/RightsManagerHistoryPage";
+import { RightsManagerArchivePage } from "./pages/RightsManagerArchivePage";
 import { InfringementReportsPage } from "./pages/InfringementReportsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DeadlinesPage } from "./pages/DeadlinesPage";
@@ -48,6 +49,7 @@ export default function App() {
             <Route path="/clients/:clientId/combination-folders" element={<ClientCombinationFoldersPage />} />
             <Route path="/clients/:clientId/combination-folders/:folderId" element={<CombinationFolderPage />} />
             <Route path="/clients/:clientId/rights-manager" element={<RightsManagerHistoryPage />} />
+            <Route path="/rights-manager" element={<RightsManagerArchivePage />} />
             <Route path="/infringements" element={<InfringementReportsPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/deadlines" element={<DeadlinesPage />} />

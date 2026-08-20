@@ -9,6 +9,7 @@ import * as authSession from "../functions/api/auth/session";
 import * as authChangePassword from "../functions/api/auth/change-password";
 import * as clientsIndex from "../functions/api/clients/index";
 import * as affiliationTagsIndex from "../functions/api/affiliation-tags/index";
+import * as rightsManagerAccountsIndex from "../functions/api/rights-manager-accounts/index";
 import * as clientById from "../functions/api/clients/byId";
 import * as clientSocialAccounts from "../functions/api/clients/byId/social-accounts";
 import * as clientStats from "../functions/api/clients/byId/stats";
@@ -24,9 +25,12 @@ import * as combinationFolderVideos from "../functions/api/combination-folders/b
 import * as combinationFolderVideoById from "../functions/api/combination-folders/byId/videos/byVideoId";
 import * as rightsManagerMarkSent from "../functions/api/rights-manager/mark-sent";
 import * as infringementReportsIndex from "../functions/api/infringement-reports/index";
+import * as infringementReportsExport from "../functions/api/infringement-reports/export";
 import * as infringementReportById from "../functions/api/infringement-reports/byId";
+import * as infringementReportScreenshot from "../functions/api/infringement-reports/byId/screenshot";
 import * as statsIndex from "../functions/api/stats/index";
 import * as extensionVideos from "../functions/api/extension/videos";
+import * as extensionInfringementReports from "../functions/api/extension/infringement-reports";
 import * as metadataLookup from "../functions/api/metadata/index";
 import * as youtubeChannelVideos from "../functions/api/youtube/channel-videos";
 
@@ -56,6 +60,7 @@ register("/api/auth/session", authSession);
 register("/api/auth/change-password", authChangePassword);
 register("/api/clients", clientsIndex);
 register("/api/affiliation-tags", affiliationTagsIndex);
+register("/api/rights-manager-accounts", rightsManagerAccountsIndex);
 register("/api/clients/:id", clientById);
 register("/api/clients/:id/social-accounts", clientSocialAccounts);
 register("/api/clients/:id/stats", clientStats);
@@ -73,9 +78,14 @@ register("/api/combination-folders/:id/videos", combinationFolderVideos);
 register("/api/combination-folders/:id/videos/:videoId", combinationFolderVideoById);
 register("/api/rights-manager/mark-sent", rightsManagerMarkSent);
 register("/api/infringement-reports", infringementReportsIndex);
+// Registered before /api/infringement-reports/:id -- ":id" would otherwise swallow "export" as a
+// report id, same reasoning as /api/videos/deadlines above.
+register("/api/infringement-reports/export", infringementReportsExport);
 register("/api/infringement-reports/:id", infringementReportById);
+register("/api/infringement-reports/:id/screenshot", infringementReportScreenshot);
 register("/api/stats", statsIndex);
 register("/api/extension/videos", extensionVideos);
+register("/api/extension/infringement-reports", extensionInfringementReports);
 register("/api/metadata", metadataLookup);
 register("/api/youtube/channel-videos", youtubeChannelVideos);
 
@@ -83,7 +93,7 @@ register("/api/youtube/channel-videos", youtubeChannelVideos);
 // nature; logout/session/change-password each call verifySession internally), and the extension
 // routes authenticate machine-to-machine via requireBearerToken instead of a browser session.
 const SESSION_EXEMPT_PREFIXES = ["/api/auth/"];
-const SESSION_EXEMPT_EXACT = ["/api/extension/videos", "/api/youtube/channel-videos"];
+const SESSION_EXEMPT_EXACT = ["/api/extension/videos", "/api/extension/infringement-reports", "/api/youtube/channel-videos"];
 
 function isSessionExempt(pathname: string): boolean {
   return SESSION_EXEMPT_EXACT.includes(pathname) || SESSION_EXEMPT_PREFIXES.some((p) => pathname.startsWith(p));
@@ -99,6 +109,8 @@ const EXTENSION_TOKEN_READ_PATTERNS: RegExp[] = [
   /^\/api\/clients$/,
   /^\/api\/clients\/[^/]+\/social-accounts$/,
   /^\/api\/social-accounts\/[^/]+\/videos$/,
+  // Populates the Rights Manager Account picker in the extension's side panel.
+  /^\/api\/rights-manager-accounts$/,
 ];
 
 function isExtensionReadPath(method: string, pathname: string): boolean {

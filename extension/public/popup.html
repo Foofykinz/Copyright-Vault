@@ -41,7 +41,8 @@
         font-weight: 500;
       }
       input,
-      select {
+      select,
+      textarea {
         background: #181c22;
         border: 1px solid #303640;
         border-radius: 4px;
@@ -49,6 +50,15 @@
         color: #f3f4f6;
         font-size: 12.5px;
         width: 100%;
+        font-family: inherit;
+      }
+      textarea {
+        resize: vertical;
+      }
+      img {
+        max-width: 100%;
+        border-radius: 4px;
+        display: block;
       }
       .field-row-inline {
         display: flex;
@@ -87,6 +97,10 @@
       .error {
         font-size: 11px;
         color: #e0554f;
+      }
+      .warning {
+        font-size: 11px;
+        color: #d9a441;
       }
       .video-list {
         display: flex;

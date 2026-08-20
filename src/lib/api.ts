@@ -13,9 +13,13 @@ import type {
   CreateVideoInput,
   DashboardStats,
   DeadlineVideo,
+  InfringementReportListParams,
+  InfringementReportListResult,
   InfringementReportWithNames,
   MarkRightsManagerSentResult,
+  RightsManagerAccount,
   RightsManagerBatchWithVideos,
+  CreateRightsManagerAccountInput,
   SessionUser,
   SocialAccount,
   UpdateClientInput,
@@ -52,6 +56,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 const del = (path: string) => request<{ ok: true }>(path, { method: "DELETE" });
 const post = <T>(path: string, body: unknown) => request<T>(path, { method: "POST", body: JSON.stringify(body) });
 const patch = <T>(path: string, body: unknown) => request<T>(path, { method: "PATCH", body: JSON.stringify(body) });
+
+/** Shared between infringementReports.list and .exportUrl so the export link's filters always
+ * match whatever's currently on screen. */
+function buildInfringementReportQuery(filters?: InfringementReportListParams): string {
+  const params = new URLSearchParams();
+  if (!filters) return "";
+  for (const [key, value] of Object.entries(filters)) {
+    if (value === undefined || value === null || value === "") continue;
+    params.set(key, String(value));
+  }
+  return params.toString();
+}
 
 export const api = {
   auth: {
@@ -126,20 +142,21 @@ export const api = {
       post<MarkRightsManagerSentResult>("/rights-manager/mark-sent", { clientId, videoIds }),
   },
   infringementReports: {
-    list: (filters?: { status?: string; clientId?: string }) => {
-      const params = new URLSearchParams();
-      if (filters?.status) params.set("status", filters.status);
-      if (filters?.clientId) params.set("clientId", filters.clientId);
-      const qs = params.toString();
-      return request<{ infringementReports: InfringementReportWithNames[] }>(
-        `/infringement-reports${qs ? `?${qs}` : ""}`
-      );
+    list: (filters?: InfringementReportListParams) => {
+      const qs = buildInfringementReportQuery(filters);
+      return request<InfringementReportListResult>(`/infringement-reports${qs ? `?${qs}` : ""}`);
     },
     create: (input: CreateInfringementReportInput) =>
       post<{ infringementReport: InfringementReportWithNames }>("/infringement-reports", input),
     update: (id: string, input: UpdateInfringementReportInput) =>
       patch<{ infringementReport: InfringementReportWithNames }>(`/infringement-reports/${id}`, input),
     remove: (id: string) => del(`/infringement-reports/${id}`),
+    /** A direct download link (session-cookie authenticated, not fetch()) — see the `run_worker_first`
+     * comment in wrangler.toml for why this has to be a real Worker route and not a static asset. */
+    exportUrl: (filters?: InfringementReportListParams) => {
+      const qs = buildInfringementReportQuery(filters);
+      return `/api/infringement-reports/export${qs ? `?${qs}` : ""}`;
+    },
   },
   stats: {
     get: () => request<{ stats: DashboardStats }>("/stats"),
@@ -148,5 +165,10 @@ export const api = {
     list: () => request<{ affiliationTags: AffiliationTag[] }>("/affiliation-tags"),
     getOrCreate: (input: CreateAffiliationTagInput) =>
       post<{ affiliationTag: AffiliationTag }>("/affiliation-tags", input),
+  },
+  rightsManagerAccounts: {
+    list: () => request<{ rightsManagerAccounts: RightsManagerAccount[] }>("/rights-manager-accounts"),
+    getOrCreate: (input: CreateRightsManagerAccountInput) =>
+      post<{ rightsManagerAccount: RightsManagerAccount }>("/rights-manager-accounts", input),
   },
 };

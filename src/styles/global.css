@@ -769,6 +769,89 @@ table.dense-table td.wrap {
   min-width: 0;
 }
 
+/* ---- Rights Manager archive ("Copyright Archive") ---- */
+
+table.archive-table {
+  min-width: 1400px;
+}
+
+.filter-row td {
+  padding: 4px 8px;
+  vertical-align: top;
+  background: var(--panel);
+}
+
+.filter-row input,
+.filter-row select {
+  padding: 4px 6px;
+  font-size: 11.5px;
+}
+
+.filter-row input[type="text"],
+.filter-row input[type="number"] {
+  width: 110px;
+}
+
+.filter-row select {
+  width: 120px;
+}
+
+.filter-range {
+  display: flex;
+  gap: 4px;
+}
+
+.filter-range input {
+  width: 78px !important;
+}
+
+select.badge {
+  width: auto;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  padding: 2px 20px 2px 8px;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 12px) 55%, calc(100% - 7px) 55%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.pagination-gap {
+  padding: 0 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* ---- Infringement report details modal ---- */
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px 20px;
+}
+
+.detail-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin-bottom: 3px;
+}
+
+.detail-field-value {
+  font-size: 13px;
+}
+
 /* ---- Toolbar (search/filters above table) ---- */
 
 .toolbar {

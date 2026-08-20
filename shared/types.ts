@@ -37,6 +37,15 @@ export interface AffiliationTag {
   createdAt: string;
 }
 
+/** A Meta Business Rights Manager account matches can come from (e.g. "WX Chasing",
+ * "Severe Studios") — a managed, reusable list, same spirit as AffiliationTag, but a distinct
+ * concept: this is a Meta-side business entity, not a label on a client. */
+export interface RightsManagerAccount {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
 export interface SocialAccount {
   id: string;
   clientId: string;
@@ -124,12 +133,24 @@ export type InfringementStatus = "needs_review" | "logged" | "takedown" | "ignor
 
 export const INFRINGEMENT_STATUSES: InfringementStatus[] = ["needs_review", "logged", "takedown", "ignored"];
 
+// "logged" reads as "Completed" everywhere in the UI (the Rights Manager archive's terminology for
+// a fully-processed match) — the stored value/enum stays "logged" so it doesn't touch the DB CHECK
+// constraint or every call site that compares against InfringementStatus.
 export const INFRINGEMENT_STATUS_LABELS: Record<InfringementStatus, string> = {
   needs_review: "Needs Review",
-  logged: "Logged",
+  logged: "Completed",
   takedown: "Takedown Issued",
   ignored: "Ignored",
 };
+
+export type InfringementReportSource = "manual" | "rights_manager";
+
+/** One matched reference asset for a Rights Manager–sourced report — a match can carry more than
+ * one, so this always lives in an array (see InfringementReport.referenceFiles). */
+export interface InfringementReferenceFile {
+  id: string;
+  title: string;
+}
 
 export interface InfringementReport {
   id: string;
@@ -144,12 +165,36 @@ export interface InfringementReport {
   foundByUserId: string;
   createdAt: string;
   updatedAt: string;
+  /** "rights_manager" for anything collected via the extension's Rights Manager match capture;
+   * "manual" for everything logged through the Quick Add form (the default). */
+  source: InfringementReportSource;
+  rightsManagerAccountId: string | null;
+  /** Meta's own reference number for the match (active_match_data_id in the Rights Manager API) —
+   * the searchable field, and also the dedup key for extension-sourced reports. Null for manual
+   * entries. */
+  metaMatchId: string | null;
+  metaVideoId: string | null;
+  matchDurationSec: number | null;
+  videoViewCount: number | null;
+  pageFollowerCount: number | null;
+  /** Drives a "private accounts are usually released, not logged" hint — Meta withholds
+   * infringerName/infringerProfileUrl for private accounts, so this is often the only signal. */
+  isAccountPrivate: boolean | null;
+  infringerProfileUrl: string | null;
+  referenceFiles: InfringementReferenceFile[] | null;
+  /** R2 object key for a captured screenshot — see functions/api/infringement-reports/byId/screenshot.ts.
+   * Never the image itself. */
+  screenshotKey: string | null;
+  /** Whether the infringing video was still live at last check. Null until someone (or the
+   * extension) has checked — see migration 0012. */
+  videoAvailable: boolean | null;
 }
 
 /** Read-only display conveniences joined in by the server — never sent back on an update. */
 export interface InfringementReportWithNames extends InfringementReport {
   clientName: string | null;
   foundByName: string;
+  rightsManagerAccountName: string | null;
 }
 
 export interface CreateInfringementReportInput {
@@ -169,6 +214,45 @@ export interface UpdateInfringementReportInput {
   postedAt?: string;
   notes?: string | null;
   status?: InfringementStatus;
+  videoAvailable?: boolean | null;
+}
+
+// ---- Rights Manager archive (paginated, filterable GET /api/infringement-reports) ----
+
+export type InfringementReportSortField = "createdAt" | "postedAt" | "videoViewCount" | "pageFollowerCount";
+
+/** Query params for GET /api/infringement-reports. All optional — an unpaginated call (no `page`)
+ * returns every matching row, same as before this filter set existed, for the existing
+ * Infringements tab's benefit. The Rights Manager archive tab always sends `page`. */
+export interface InfringementReportListParams {
+  status?: InfringementStatus;
+  clientId?: string;
+  source?: InfringementReportSource;
+  rightsManagerAccountId?: string;
+  /** Substring match against infringerName — the "Page" column on the Rights Manager archive tab. */
+  infringerName?: string;
+  matchId?: string;
+  videoId?: string;
+  videoAvailable?: boolean;
+  platform?: Platform;
+  postedFrom?: string;
+  postedTo?: string;
+  viewsMin?: number;
+  viewsMax?: number;
+  followersMin?: number;
+  followersMax?: number;
+  sortBy?: InfringementReportSortField;
+  sortDir?: "asc" | "desc";
+  page?: number;
+  pageSize?: number;
+}
+
+export interface InfringementReportListResult {
+  infringementReports: InfringementReportWithNames[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 }
 
 export interface ClientStats {
@@ -222,6 +306,10 @@ export interface UpdateClientInput {
 }
 
 export interface CreateAffiliationTagInput {
+  name: string;
+}
+
+export interface CreateRightsManagerAccountInput {
   name: string;
 }
 
@@ -318,6 +406,37 @@ export interface ExtensionVideoImportInput {
  * that social account — the existing row is returned as-is rather than creating a new one. */
 export interface ExtensionVideoImportResult {
   video: VideoWithDeadline;
+  duplicate: boolean;
+}
+
+/** Payload the extension POSTs for one captured Rights Manager match. Field-by-field mapping from
+ * the real copyright_matches API response lives in the plan/implementation notes, not here. */
+export interface ExtensionInfringementReportImportInput {
+  clientId?: string | null;
+  rightsManagerAccountId: string;
+  infringerName: string;
+  infringingUrl: string;
+  platform: Platform;
+  postedAt: string;
+  notes?: string | null;
+  metaMatchId: string;
+  metaVideoId?: string | null;
+  matchDurationSec?: number | null;
+  videoViewCount?: number | null;
+  pageFollowerCount?: number | null;
+  isAccountPrivate?: boolean | null;
+  infringerProfileUrl?: string | null;
+  referenceFiles?: InfringementReferenceFile[] | null;
+  /** A PNG screenshot as a data URL. Optional — a request without one just leaves the report's
+   * screenshotKey null. */
+  screenshotDataUrl?: string | null;
+  videoAvailable?: boolean | null;
+}
+
+/** Response for POST /api/extension/infringement-reports. `duplicate` is true when metaMatchId
+ * already existed — the existing row is returned as-is rather than creating a new one. */
+export interface ExtensionInfringementReportImportResult {
+  infringementReport: InfringementReportWithNames;
   duplicate: boolean;
 }
 

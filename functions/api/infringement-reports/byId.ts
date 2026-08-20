@@ -2,7 +2,7 @@ import type { ApiHandler } from "../../lib/env";
 import { errorResponse, json, readJson, ValidationError } from "../../lib/http";
 import { nowIso } from "../../lib/ids";
 import { getClientOrThrow, getInfringementReportOrThrow, mapInfringementReport } from "../../lib/db";
-import { optionalString, requireIsoDate, requirePlatform, requireString, requireUrl } from "../../lib/validation";
+import { optionalBoolean, optionalString, requireIsoDate, requirePlatform, requireString, requireUrl } from "../../lib/validation";
 import { INFRINGEMENT_STATUSES } from "../../../shared/types";
 import type { InfringementReportWithNames, UpdateInfringementReportInput } from "../../../shared/types";
 
@@ -18,8 +18,21 @@ interface JoinedRow {
   found_by_user_id: string;
   created_at: string;
   updated_at: string;
+  source: string;
+  rights_manager_account_id: string | null;
+  meta_match_id: string | null;
+  meta_video_id: string | null;
+  match_duration_sec: number | null;
+  video_view_count: number | null;
+  page_follower_count: number | null;
+  is_account_private: number | null;
+  infringer_profile_url: string | null;
+  reference_files: string | null;
+  screenshot_key: string | null;
+  video_available: number | null;
   client_name: string | null;
   found_by_name: string;
+  rights_manager_account_name: string | null;
 }
 
 function withNames(row: JoinedRow): InfringementReportWithNames {
@@ -27,6 +40,7 @@ function withNames(row: JoinedRow): InfringementReportWithNames {
     ...mapInfringementReport(row),
     clientName: row.client_name,
     foundByName: row.found_by_name,
+    rightsManagerAccountName: row.rights_manager_account_name,
   };
 }
 
@@ -34,10 +48,11 @@ async function getJoinedOrThrow(db: D1Database, id: string): Promise<JoinedRow> 
   await getInfringementReportOrThrow(db, id); // 404s with the right message if missing
   const row = await db
     .prepare(
-      `SELECT ir.*, c.name as client_name, u.name as found_by_name
+      `SELECT ir.*, c.name as client_name, u.name as found_by_name, rma.name as rights_manager_account_name
        FROM infringement_reports ir
        LEFT JOIN clients c ON c.id = ir.client_id
        JOIN users u ON u.id = ir.found_by_user_id
+       LEFT JOIN rights_manager_accounts rma ON rma.id = ir.rights_manager_account_id
        WHERE ir.id = ?`
     )
     .bind(id)
@@ -87,6 +102,11 @@ export const onRequestPatch: ApiHandler = async (context) => {
       }
       updates.push("status = ?");
       values.push(body.status);
+    }
+    if (body.videoAvailable !== undefined) {
+      const videoAvailable = optionalBoolean(body.videoAvailable);
+      updates.push("video_available = ?");
+      values.push(videoAvailable === null ? null : videoAvailable ? 1 : 0);
     }
 
     if (updates.length > 0) {

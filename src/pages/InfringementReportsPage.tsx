@@ -130,6 +130,28 @@ function ReportRow({ report, onChanged }: { report: InfringementReportWithNames;
       <td>{formatDisplayDate(report.postedAt)}</td>
       <td>{formatDisplayDate(report.createdAt)}</td>
       <td>{report.foundByName}</td>
+      <td className="wrap">
+        {report.source === "rights_manager" ? (
+          <>
+            <div>
+              {report.metaMatchId}
+              {report.isAccountPrivate ? " 🔒" : ""}
+            </div>
+            <div className="text-secondary">
+              {report.rightsManagerAccountName}
+              {report.videoViewCount !== null ? ` · ${report.videoViewCount.toLocaleString()} views` : ""}
+              {report.pageFollowerCount !== null ? ` · ${report.pageFollowerCount.toLocaleString()} followers` : ""}
+            </div>
+            {report.screenshotKey && (
+              <a href={`/api/infringement-reports/${report.id}/screenshot`} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">
+                Screenshot
+              </a>
+            )}
+          </>
+        ) : (
+          <span className="text-secondary">—</span>
+        )}
+      </td>
       <td className="wrap">{report.notes || <span className="text-secondary">—</span>}</td>
       <td>
         <select
@@ -168,7 +190,8 @@ function ReportRow({ report, onChanged }: { report: InfringementReportWithNames;
 
 export function InfringementReportsPage() {
   const [tab, setTab] = useState<InfringementStatus | "all">("needs_review");
-  const { infringementReports, loading, refetch } = useInfringementReports(tab);
+  const [matchIdSearch, setMatchIdSearch] = useState("");
+  const { infringementReports, loading, refetch } = useInfringementReports(tab, matchIdSearch);
 
   return (
     <div>
@@ -176,7 +199,7 @@ export function InfringementReportsPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Infringements</h1>
-          <div className="page-subtitle">Someone else's content that's actually a client's — logged here instead of Signal.</div>
+          <div className="page-subtitle">Log new infrigments for review.</div>
         </div>
       </div>
 
@@ -188,6 +211,13 @@ export function InfringementReportsPage() {
             {TAB_LABELS[t]}
           </button>
         ))}
+        <input
+          type="text"
+          placeholder="Search by match ID"
+          value={matchIdSearch}
+          onChange={(e) => setMatchIdSearch(e.target.value)}
+          style={{ width: 200, marginLeft: "auto" }}
+        />
       </div>
 
       {loading ? (
@@ -206,6 +236,7 @@ export function InfringementReportsPage() {
                 <th>Posted</th>
                 <th>Found</th>
                 <th>Found By</th>
+                <th>Match</th>
                 <th>Notes</th>
                 <th>Status</th>
                 <th></th>

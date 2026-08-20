@@ -112,6 +112,11 @@ export function Sidebar({ user, onLogout }: { user: SessionUser; onLogout: () =>
             </NavLink>
           </li>
           <li>
+            <NavLink to="/rights-manager" className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}>
+              Rights Manager
+            </NavLink>
+          </li>
+          <li>
             <NavLink to="/extension" className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}>
               Extension
             </NavLink>

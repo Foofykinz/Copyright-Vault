@@ -3,10 +3,15 @@ import { api } from "../lib/api";
 import { useAsync } from "./useAsync";
 import type { CreateInfringementReportInput, InfringementStatus, UpdateInfringementReportInput } from "../../shared/types";
 
-export function useInfringementReports(statusFilter: InfringementStatus | "all") {
+export function useInfringementReports(statusFilter: InfringementStatus | "all", matchId?: string) {
+  const trimmedMatchId = matchId?.trim() || undefined;
   const { data, loading, error, refetch } = useAsync(
-    () => api.infringementReports.list(statusFilter === "all" ? undefined : { status: statusFilter }),
-    [statusFilter]
+    () =>
+      api.infringementReports.list({
+        ...(statusFilter === "all" ? {} : { status: statusFilter }),
+        ...(trimmedMatchId ? { matchId: trimmedMatchId } : {}),
+      }),
+    [statusFilter, trimmedMatchId]
   );
   return { infringementReports: data?.infringementReports ?? [], loading, error, refetch };
 }

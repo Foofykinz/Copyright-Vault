@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Viral DRM Collector",
-  "version": "1.0.3",
+  "version": "1.2.1",
   "description": "Collects original client videos from TikTok, X, Facebook, Instagram, and YouTube and sends them to Viral DRM for tracking.",
   "action": {
     "default_title": "Viral DRM Collector"
@@ -13,7 +13,7 @@
   "side_panel": {
     "default_path": "popup.html"
   },
-  "permissions": ["storage", "activeTab", "sidePanel"],
+  "permissions": ["storage", "activeTab", "sidePanel", "scripting", "tabs"],
   "optional_host_permissions": ["https://*/*", "http://*/*"],
   "content_scripts": [
     {
@@ -52,6 +52,17 @@
     {
       "matches": ["https://www.instagram.com/*"],
       "js": ["content-instagram.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://business.facebook.com/*"],
+      "js": ["content-rights-manager-network.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://business.facebook.com/*"],
+      "js": ["content-rights-manager.js"],
       "run_at": "document_start"
     }
   ]

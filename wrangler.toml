@@ -19,3 +19,10 @@ binding = "DB"
 database_name = "viral-drm-db"
 database_id = "b77c56d1-6344-431b-bca2-bf34cdb5d5ca"
 migrations_dir = "migrations"
+
+# Rights Manager match screenshots, captured by the extension. Staff-only access via a session-
+# authenticated proxy route (functions/api/infringement-reports/byId/screenshot.ts) — never served
+# from a public bucket URL.
+[[r2_buckets]]
+binding = "SCREENSHOTS"
+bucket_name = "copyright-vault-screenshots"

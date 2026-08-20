@@ -68,6 +68,21 @@ export function optionalNonNegativeInt(value: unknown, field: string, fallback =
   return num;
 }
 
+/** Like optionalNonNegativeInt but allows a fraction — e.g. match_duration_sec, which Rights
+ * Manager reports with sub-second precision (17.6s). */
+export function optionalNonNegativeNumber(value: unknown, field: string): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < 0) {
+    throw new ValidationError(`${field} must be a non-negative number.`, { [field]: "invalid" });
+  }
+  return num;
+}
+
+export function optionalBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
 export function optionalYoutubeCategory(value: unknown): YouTubeCategory | null {
   if (value === undefined || value === null || value === "") return null;
   if (typeof value !== "string" || !YOUTUBE_CATEGORIES.includes(value as YouTubeCategory)) {

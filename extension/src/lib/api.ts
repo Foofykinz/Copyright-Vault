@@ -1,7 +1,10 @@
 import type {
   Client,
+  ExtensionInfringementReportImportInput,
+  ExtensionInfringementReportImportResult,
   ExtensionVideoImportInput,
   ExtensionVideoImportResult,
+  RightsManagerAccount,
   SocialAccount,
   VideoWithDeadline,
   YouTubeChannelVideosRequest,
@@ -42,6 +45,13 @@ export const extensionApi = {
     }),
   scanYouTubeChannel: (config: ExtensionConfig, input: YouTubeChannelVideosRequest) =>
     request<YouTubeChannelVideosResponse>(config, "/api/youtube/channel-videos", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  listRightsManagerAccounts: (config: ExtensionConfig) =>
+    request<{ rightsManagerAccounts: RightsManagerAccount[] }>(config, "/api/rights-manager-accounts"),
+  importInfringementReport: (config: ExtensionConfig, input: ExtensionInfringementReportImportInput) =>
+    request<ExtensionInfringementReportImportResult>(config, "/api/extension/infringement-reports", {
       method: "POST",
       body: JSON.stringify(input),
     }),

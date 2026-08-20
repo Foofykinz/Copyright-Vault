@@ -1,4 +1,16 @@
-import type { AffiliationTag, Client, CombinationFolder, InfringementReport, InfringementStatus, Platform, SocialAccount, Video } from "../../shared/types";
+import type {
+  AffiliationTag,
+  Client,
+  CombinationFolder,
+  InfringementReferenceFile,
+  InfringementReport,
+  InfringementReportSource,
+  InfringementStatus,
+  Platform,
+  RightsManagerAccount,
+  SocialAccount,
+  Video,
+} from "../../shared/types";
 import { NotFoundError } from "./http";
 
 interface ClientRow {
@@ -74,6 +86,24 @@ interface InfringementReportRow {
   found_by_user_id: string;
   created_at: string;
   updated_at: string;
+  source: string;
+  rights_manager_account_id: string | null;
+  meta_match_id: string | null;
+  meta_video_id: string | null;
+  match_duration_sec: number | null;
+  video_view_count: number | null;
+  page_follower_count: number | null;
+  is_account_private: number | null;
+  infringer_profile_url: string | null;
+  reference_files: string | null;
+  screenshot_key: string | null;
+  video_available: number | null;
+}
+
+interface RightsManagerAccountRow {
+  id: string;
+  name: string;
+  created_at: string;
 }
 
 export function mapClient(row: ClientRow): Client {
@@ -147,6 +177,16 @@ export function mapCombinationFolder(row: CombinationFolderRow): CombinationFold
   };
 }
 
+function parseReferenceFiles(raw: string | null): InfringementReferenceFile[] | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null; // malformed/legacy value — surfaced as "no reference files" rather than throwing
+  }
+}
+
 export function mapInfringementReport(row: InfringementReportRow): InfringementReport {
   return {
     id: row.id,
@@ -160,6 +200,26 @@ export function mapInfringementReport(row: InfringementReportRow): InfringementR
     foundByUserId: row.found_by_user_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    source: row.source as InfringementReportSource,
+    rightsManagerAccountId: row.rights_manager_account_id,
+    metaMatchId: row.meta_match_id,
+    metaVideoId: row.meta_video_id,
+    matchDurationSec: row.match_duration_sec,
+    videoViewCount: row.video_view_count,
+    pageFollowerCount: row.page_follower_count,
+    isAccountPrivate: row.is_account_private === null ? null : row.is_account_private === 1,
+    infringerProfileUrl: row.infringer_profile_url,
+    referenceFiles: parseReferenceFiles(row.reference_files),
+    screenshotKey: row.screenshot_key,
+    videoAvailable: row.video_available === null ? null : row.video_available === 1,
+  };
+}
+
+export function mapRightsManagerAccount(row: RightsManagerAccountRow): RightsManagerAccount {
+  return {
+    id: row.id,
+    name: row.name,
+    createdAt: row.created_at,
   };
 }
 
@@ -206,4 +266,10 @@ export async function getInfringementReportOrThrow(db: D1Database, id: string): 
   const row = await db.prepare("SELECT * FROM infringement_reports WHERE id = ?").bind(id).first<InfringementReportRow>();
   if (!row) throw new NotFoundError("Infringement report not found.");
   return mapInfringementReport(row);
+}
+
+export async function getRightsManagerAccountOrThrow(db: D1Database, id: string): Promise<RightsManagerAccount> {
+  const row = await db.prepare("SELECT * FROM rights_manager_accounts WHERE id = ?").bind(id).first<RightsManagerAccountRow>();
+  if (!row) throw new NotFoundError("Rights Manager account not found.");
+  return mapRightsManagerAccount(row);
 }

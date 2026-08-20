@@ -1,3 +1,2 @@
-- Fixed a timezone bug where videos posted late in the evening (Central time) could be
-  filed under the next day instead of the day they actually went up
-- No other visible changes
+- Fixed a misleading error message shown after a successful match capture whose screenshot step failed — a captured match is now kept (and still sendable without a screenshot) instead of being masked by an unrelated error, and the error shown now reflects what actually failed
+- No other changes since 1.2.0
