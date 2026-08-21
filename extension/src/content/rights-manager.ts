@@ -1,7 +1,7 @@
 import {
   COLLECT_CURRENT_MATCH_MESSAGE,
   DETECT_RIGHTS_MANAGER_PAGE_MESSAGE,
-  RIGHTS_MANAGER_HOSTS,
+  isRightsManagerHost,
   RIGHTS_MANAGER_MATCHES_SOURCE,
   type CapturedMatch,
   type CapturedReferenceFile,
@@ -11,14 +11,14 @@ import {
   type RightsManagerPageKind,
 } from "../lib/rights-manager-scraped";
 
-// Broadened from a "/rights_manager/" path check on business.facebook.com alone to every host in
-// RIGHTS_MANAGER_HOSTS (manifest.json's content_scripts match patterns cover the same hosts, so
+// Broadened from a "/rights_manager/" path check on business.facebook.com alone to any
+// isRightsManagerHost() (manifest.json's content_scripts match patterns cover the same hosts, so
 // this doesn't reach any further than injection already does) -- Meta's newer Content Protection
 // interface doesn't have a confirmed URL pattern to gate on, so page-kind detection below is
 // content-based instead. This is cheap and passive (a message listener + some DOM read helpers)
 // until something actually asks it to act, so it's safe to have present on every page on these
 // hosts, not just match-review ones.
-if (RIGHTS_MANAGER_HOSTS.has(location.hostname.replace(/^www\./, ""))) {
+if (isRightsManagerHost(location.hostname)) {
   // Accumulates every match the page has loaded (the copyright_matches response can arrive more
   // than once — e.g. the list paginating as you scroll it — so this merges rather than replaces,
   // same posture as facebook.ts's capturedStories). Indexed under three different candidate id

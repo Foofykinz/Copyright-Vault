@@ -5,15 +5,21 @@ export const RIGHTS_MANAGER_MATCHES_SOURCE = "viral-drm-rights-manager-matches";
 
 export const COLLECT_CURRENT_MATCH_MESSAGE = "viral-drm-collect-current-match";
 
-/** Hosts Meta serves a match-review interface from. business.facebook.com is Business Manager
- * (classic Rights Manager, confirmed live for WX Chasing). web.facebook.com is the regular
- * logged-in web app's Professional Dashboard (confirmed live: Content Protection reached via
- * web.facebook.com/professional_dashboard/, NOT Business Manager, for at least one account) --
- * these are genuinely different hostnames, not a typo/alias of each other. Shared between the
- * popup (deciding whether to even ask the content script) and the content script itself (deciding
+/** Whether a hostname is one Meta could plausibly serve a match-review interface from. Three
+ * confirmed live so far, all genuinely different hostnames, not aliases of each other:
+ * business.facebook.com (Business Manager, classic Rights Manager, WX Chasing), web.facebook.com,
+ * and www.facebook.com (both reaching Content Protection's Professional Dashboard for different
+ * accounts). Rather than keep growing a hardcoded allowlist one report at a time as more accounts
+ * turn out to land on yet another facebook.com subdomain, this accepts any of them -- safe to do
+ * broadly since what actually gates real behavior is the page's own path/content (see
+ * isContentProtectionMatchPage/isLegacyRightsManagerPage in content/rights-manager.ts), not the
+ * host; this just decides whether it's worth asking the question at all. Shared between the popup
+ * (deciding whether to even message the content script) and the content script itself (deciding
  * whether to activate at all) so the two can't drift apart the way business.facebook.com being
- * hardcoded in both places independently just did. */
-export const RIGHTS_MANAGER_HOSTS = new Set(["business.facebook.com", "web.facebook.com"]);
+ * hardcoded independently in both places once did. */
+export function isRightsManagerHost(hostname: string): boolean {
+  return hostname === "facebook.com" || hostname.endsWith(".facebook.com");
+}
 
 export const DETECT_RIGHTS_MANAGER_PAGE_MESSAGE = "viral-drm-detect-rights-manager-page";
 

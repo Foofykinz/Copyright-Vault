@@ -1,12 +1,10 @@
-- Fixed Content Protection potentially never detecting a match at all on a non-English Facebook interface — the infringing post link was only ever matched by its exact English text ("See post"), which renders as different text entirely in another language even though the page is otherwise identical. Now also matches by the link's destination URL shape (instagram.com/reel/, facebook.com/reel/, etc.) as a language-independent fallback
-- Fixed screenshots not zooming out enough to capture the whole page — tries 50%, then 35%, then 25% (already confirmed to capture everything), stopping at the first zoom a page actually fits into
+- Fixed Content Protection not detecting on www.facebook.com — a third distinct hostname Meta serves it from, in addition to business.facebook.com and web.facebook.com already supported. Rather than keep adding hostnames one report at a time, the extension now activates on any facebook.com subdomain, so a new one shouldn't require another update
+- Fixed Content Protection potentially never detecting a match on a non-English Facebook interface — the infringing post link is now also matched by its destination URL shape, not just its exact English text
+- Fixed screenshots not zooming out enough to capture the whole page — tries 50%, then 35%, then 25%, stopping at the first zoom a page actually fits into
 - New: the match review card now shows the captured infringing link before you send
 - Fixed Content Protection reference file titles picking up extra/wrong text
 - New: Content Protection captures now include reference file names
 - Fixed Content Protection captures failing to find Match ID/Video ID/Date detected
-- Fixed Content Protection never actually activating on an individual match's page at all
-- Fixed Content Protection not activating on web.facebook.com/professional_dashboard/ — different host than Business Manager
-- Added a console log on every capture showing exactly which parser handled it, and the full captured record for Content Protection matches
 - New: capture matches from Meta's newer Content Protection interface alongside the classic Rights Manager interface (WX Chasing, unchanged)
 - Fixed match screenshots failing with a permissions error
 - New: mark whether the infringing video is still available while reviewing a captured match

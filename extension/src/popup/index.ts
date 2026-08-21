@@ -5,7 +5,7 @@ import { ENRICH_VIEW_COUNTS_MESSAGE, SCAN_MESSAGE, type EnrichViewCountsResult, 
 import {
   COLLECT_CURRENT_MATCH_MESSAGE,
   DETECT_RIGHTS_MANAGER_PAGE_MESSAGE,
-  RIGHTS_MANAGER_HOSTS,
+  isRightsManagerHost,
   type CapturedMatch,
   type CollectMatchResult,
   type DetectRightsManagerPageResult,
@@ -114,7 +114,7 @@ const state: State = {
 function isRightsManagerHostTab(url: string | undefined): boolean {
   if (!url) return false;
   try {
-    return RIGHTS_MANAGER_HOSTS.has(new URL(url).hostname.replace(/^www\./, ""));
+    return isRightsManagerHost(new URL(url).hostname);
   } catch {
     return false;
   }
@@ -124,9 +124,9 @@ function isRightsManagerHostTab(url: string | undefined): boolean {
  * either interface, classic Rights Manager or the newer Content Protection. Content-based (asks
  * the content script, which inspects the live page), not URL-path-based: Content Protection has no
  * confirmed URL pattern to check against, unlike classic Rights Manager's "/rights_manager/". Only
- * messages the content script at all when the host is a known one (RIGHTS_MANAGER_HOSTS), so this
- * doesn't add a round-trip to every tab on every poll tick — just ones already on a host that could
- * plausibly be showing one of these interfaces. */
+ * messages the content script at all when the host could plausibly be one of these (any
+ * facebook.com subdomain — see isRightsManagerHost), so this doesn't add a round-trip to every tab
+ * on every poll tick. */
 async function detectRightsManagerTab(tab: chrome.tabs.Tab | undefined): Promise<boolean> {
   if (!isRightsManagerHostTab(tab?.url) || tab?.id === undefined) return false;
   try {
