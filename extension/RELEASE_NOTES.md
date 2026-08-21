@@ -1,5 +1,4 @@
-- Fixed screenshots on Content Protection's match-details page silently capturing only whatever was on screen at the start, not the whole page — that page keeps its content in its own scrolling panel rather than scrolling the whole browser window, and the screenshot tool was only ever trying to scroll the window. It now finds and scrolls the actual panel. One known possible side effect: if there's a header/nav bar that stays fixed while the panel scrolls, it may appear repeated in the stitched image — let me know if that's actually a problem in practice, there's a more involved fix for it if so
-- Fixed the screenshot zoom-out being too aggressive (25%) and producing a distorted image — capped back at 50%
+- Fixed screenshots not zooming out enough to capture the whole page again — instead of one fixed zoom level, it now tries 50%, then 35%, then 25% (the level already confirmed to capture everything), stopping at the first one that actually fits the page. Should look better than a flat 25% when a page doesn't need to zoom out that far, while never being worse than the version that was already working
 - New: the match review card now shows the captured infringing link before you send
 - Fixed Content Protection reference file titles picking up extra/wrong text
 - New: Content Protection captures now include reference file names

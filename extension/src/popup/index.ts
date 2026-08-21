@@ -681,64 +681,65 @@ async function sendSelected(): Promise<void> {
  * contents of url..." on the executeScript calls; without "<all_urls>" specifically, captureVisibleTab
  * separately throws "Either the '<all_urls>' or 'activeTab' permission is required." See
  * manifest.json's host_permissions. */
-// Tried Chrome's practical floor (0.25) to fit more of a tall page per captured slice, but that
-// came back "wonky, zooming out way too much" -- distorts the screenshot's usefulness more than it
-// helps. Capped at 0.5.
-const SCREENSHOT_ZOOM = 0.5;
+// Tried a single fixed zoom twice (0.5 then 0.25) and neither was right for every page: 0.25
+// confirmed it CAN capture Content Protection's match-details page completely, just too small to
+// read comfortably; 0.5 didn't capture it fully. Rather than guess a third fixed number, try zoom
+// levels from most-readable to least and stop at the first one a page actually fits into,
+// most-to-least aggressive -- 0.25 is never worse than the version that was already confirmed
+// working, and pages that fit at a gentler zoom get a more readable screenshot automatically.
+const ZOOM_CANDIDATES = [0.5, 0.35, 0.25];
 
+// Each chrome.scripting.executeScript() call below re-declares its own copy of a
+// findScrollContainer() helper -- functions passed to that API must be fully self-contained (no
+// closures over anything outside the function body), so it can't be shared as a normal helper the
+// way everything else in this file is. Finds the element with the largest scroll overflow
+// (scrollHeight - clientHeight) among anything with overflow-y: auto/scroll, falling back to the
+// page's own scrolling element when nothing else overflows -- some pages (Content Protection's
+// match-details view, possibly) keep their content in an independently-scrolling inner pane rather
+// than scrolling the whole document, where window.scrollTo() is a no-op. Kept as a real fallback
+// for whatever a single zoomed-out shot still doesn't cover, on top of the zoom-stepping below, not
+// instead of it.
 async function captureFullPageScreenshot(tabId: number, windowId: number): Promise<string> {
   const originalZoom = await chrome.tabs.getZoom(tabId);
-  await chrome.tabs.setZoom(tabId, SCREENSHOT_ZOOM);
 
   try {
-    // At 0.5 zoom, a screenshot was still coming back incomplete ("not zooming out to capture the
-    // whole screen") even though 0.25 had captured everything (just too small/"wonky" to be
-    // useful). That pattern only makes sense if the real content lives in an
-    // independently-scrolling inner pane (confirmed live: Content Protection's match-details view)
-    // rather than the whole page scrolling -- window.scrollTo() is a no-op there, so this was
-    // always just capturing whatever was visible in that pane at the start and calling it done; it
-    // only ever looked "complete" at 0.25 because the pane's content happened to fit within one
-    // viewport at that zoom, not because scrolling was actually working. findScrollContainer below
-    // finds and scrolls the actual overflowing element (largest scrollHeight - clientHeight among
-    // anything with overflow-y: auto/scroll) instead of assuming it's always the window -- falls
-    // back to the page's own scrolling element when nothing else overflows, so this doesn't change
-    // behavior for a normal whole-page-scroll page like legacy Rights Manager.
-    //
-    // Duplicated verbatim into both chrome.scripting.executeScript() calls below rather than
-    // shared as a normal helper -- functions passed to that API must be fully self-contained (no
-    // closures over anything outside the function body).
-    const [{ result: dims }] = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: () => {
-        function findScrollContainer(): Element {
-          let best: Element = document.scrollingElement || document.documentElement;
-          let bestOverflow = best.scrollHeight - best.clientHeight;
-          for (const el of document.querySelectorAll<HTMLElement>("*")) {
-            const style = getComputedStyle(el);
-            if (!/(auto|scroll)/.test(style.overflowY)) continue;
-            const overflow = el.scrollHeight - el.clientHeight;
-            if (overflow > bestOverflow) {
-              best = el;
-              bestOverflow = overflow;
+    type ScreenshotDims = { width: number; height: number; windowWidth: number; windowHeight: number };
+    let dims: ScreenshotDims | null = null;
+
+    for (const candidate of ZOOM_CANDIDATES) {
+      await chrome.tabs.setZoom(tabId, candidate);
+      const [{ result }] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => {
+          function findScrollContainer(): Element {
+            let best: Element = document.scrollingElement || document.documentElement;
+            let bestOverflow = best.scrollHeight - best.clientHeight;
+            for (const el of document.querySelectorAll<HTMLElement>("*")) {
+              const style = getComputedStyle(el);
+              if (!/(auto|scroll)/.test(style.overflowY)) continue;
+              const overflow = el.scrollHeight - el.clientHeight;
+              if (overflow > bestOverflow) {
+                best = el;
+                bestOverflow = overflow;
+              }
             }
+            return best;
           }
-          return best;
-        }
-        const container = findScrollContainer();
-        return {
-          width: Math.max(container.scrollWidth, window.innerWidth),
-          height: container.scrollHeight,
-          windowWidth: window.innerWidth,
-          windowHeight: window.innerHeight,
-        };
-      },
-    });
-    const { width, height, windowWidth, windowHeight } = dims as {
-      width: number;
-      height: number;
-      windowWidth: number;
-      windowHeight: number;
-    };
+          const container = findScrollContainer();
+          return {
+            width: Math.max(container.scrollWidth, window.innerWidth),
+            height: container.scrollHeight,
+            windowWidth: window.innerWidth,
+            windowHeight: window.innerHeight,
+          };
+        },
+      });
+      dims = result as ScreenshotDims;
+      // Fits in essentially one shot at this zoom -- good enough, stop here rather than zoom out
+      // any further than this page actually needs.
+      if (dims.height <= dims.windowHeight * 1.05) break;
+    }
+    const { width, height, windowWidth, windowHeight } = dims!;
 
     const screenshots: { y: number; dataUrl: string }[] = [];
     let requestedY = 0;
