@@ -1,4 +1,5 @@
-- Fixed screenshots not zooming out enough to capture the whole page again — instead of one fixed zoom level, it now tries 50%, then 35%, then 25% (the level already confirmed to capture everything), stopping at the first one that actually fits the page. Should look better than a flat 25% when a page doesn't need to zoom out that far, while never being worse than the version that was already working
+- Fixed Content Protection potentially never detecting a match at all on a non-English Facebook interface — the infringing post link was only ever matched by its exact English text ("See post"), which renders as different text entirely in another language even though the page is otherwise identical. Now also matches by the link's destination URL shape (instagram.com/reel/, facebook.com/reel/, etc.) as a language-independent fallback
+- Fixed screenshots not zooming out enough to capture the whole page — tries 50%, then 35%, then 25% (already confirmed to capture everything), stopping at the first zoom a page actually fits into
 - New: the match review card now shows the captured infringing link before you send
 - Fixed Content Protection reference file titles picking up extra/wrong text
 - New: Content Protection captures now include reference file names

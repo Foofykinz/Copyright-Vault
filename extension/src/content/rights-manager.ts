@@ -191,8 +191,41 @@ if (RIGHTS_MANAGER_HOSTS.has(location.hostname.replace(/^www\./, ""))) {
   /** "See post" is the literal, exact visible text of the infringing-post link in every confirmed
    * sample so far. Deliberately not scoped to any container -- Content Protection's page shell
    * hasn't been captured, only this card, so a broad document-wide search is the safest bet. */
+  /** Matches the confirmed real shapes of an infringing-post URL: instagram.com/reel/ or /p/,
+   * facebook.com's own /reel/ and /<page>/videos/ patterns, and fb.watch's short links. Used as a
+   * fallback below when "See post" isn't found by its exact English text -- Facebook's UI is
+   * per-account localizable, so anyone whose interface isn't in English would never match that
+   * text at all, even though the underlying page is otherwise identical. Matching by destination
+   * shape instead of visible text is language-independent. */
+  function looksLikeInfringingPostUrl(href: string): boolean {
+    try {
+      const { hostname, pathname } = new URL(href);
+      const host = hostname.replace(/^www\.|^web\./, "");
+      if (host === "instagram.com") return /^\/(reel|p)\//.test(pathname);
+      if (host === "facebook.com") return /\/(reel|videos)\//.test(pathname);
+      if (host === "fb.watch") return true;
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
   function findSeePostLink(): HTMLAnchorElement | null {
-    return [...document.querySelectorAll<HTMLAnchorElement>("a")].find((a) => cleanText(a.textContent) === "See post") ?? null;
+    const links = [...document.querySelectorAll<HTMLAnchorElement>("a")];
+    const byText = links.find((a) => cleanText(a.textContent) === "See post");
+    if (byText) return byText;
+    // Fallback for a non-English Facebook UI, where "See post" renders as different text entirely
+    // -- same underlying page, just not matchable by English text. Excludes profile links (aria-
+    // labeled "View X's profile") and reference-asset links (protection_details) since those can
+    // also point at instagram.com/facebook.com URLs that would otherwise false-positive here.
+    return (
+      links.find((a) => {
+        const label = a.getAttribute("aria-label") ?? "";
+        if (label.startsWith("View ") && label.endsWith("'s profile")) return false;
+        if (a.href.includes("/content_protection/protection_details/")) return false;
+        return looksLikeInfringingPostUrl(a.href);
+      }) ?? null
+    );
   }
 
   /** Confirmed DOM has two copies of this link: one wrapping just the avatar (no visible text,
