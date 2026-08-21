@@ -711,194 +711,121 @@ async function sendSelected(): Promise<void> {
  * contents of url..." on the executeScript calls; without "<all_urls>" specifically, captureVisibleTab
  * separately throws "Either the '<all_urls>' or 'activeTab' permission is required." See
  * manifest.json's host_permissions. */
-/** How many pixel rows at the top of `curr` are effectively identical to the top of `prev` --
- * that's what identifies position: sticky/fixed content (confirmed live: Content Protection's top
- * nav bar and its match-details video panel are both sticky, so they render at the exact same
- * on-screen position in every captured slice regardless of scroll position). Samples a handful of
- * x positions per row rather than every pixel, for speed; a row counts as "the same" only if every
- * sampled point is close (small tolerance, not exact -- a paused video frame or a loading
- * spinner can shift by a pixel or two between captures without being a real content difference). */
-function measureStickyRows(prev: ImageData, curr: ImageData, width: number, maxRows: number): number {
-  const sampleXs = [0.1, 0.5, 0.9].map((f) => Math.min(width - 1, Math.floor(width * f)));
-  const TOLERANCE = 24;
-  let row = 0;
-  for (; row < maxRows; row++) {
-    for (const x of sampleXs) {
-      const i = (row * width + x) * 4;
-      const diff = Math.abs(prev.data[i] - curr.data[i]) + Math.abs(prev.data[i + 1] - curr.data[i + 1]) + Math.abs(prev.data[i + 2] - curr.data[i + 2]);
-      if (diff > TOLERANCE) return row;
-    }
-  }
-  return row;
-}
+// Reverted back to this after four rounds of trying to make normal-zoom scroll+stitch work
+// reliably (crop-to-container, sticky-row pixel comparison, video pausing, locked container
+// identity) -- each fixed a real, confirmed issue, but something in that pipeline was still wrong
+// after all four, and by then it wasn't worth a fifth guess without more direct evidence than a
+// screenshot could give. This version is simpler and was already confirmed to capture Content
+// Protection's match-details page completely; the only known complaint about it is being a little
+// more zoomed out than ideal, not missing/duplicated content. If the scroll+stitch approach is
+// ever worth revisiting, the fix should start from confirmed CSS (position: sticky/fixed and their
+// bounds via getComputedStyle), not pixel comparison -- see the console snippet offered for that.
+//
+// Tries zoom levels from most-readable to least and stops at the first one a page actually fits
+// into in ~1 shot -- 0.25 is the last resort and is what's confirmed to fully capture Content
+// Protection's page; 0.5/0.35 are tried first so a page that doesn't need to zoom out that far
+// gets a more readable screenshot automatically.
+const ZOOM_CANDIDATES = [0.5, 0.35, 0.25];
 
-// Reworked twice already: two zoom-based attempts (0.5, then a 0.5/0.35/0.25 step-down) both
-// traded away readability to guarantee completeness; then a crop-to-scroll-container attempt at
-// normal zoom still showed the top repeated (confirmed live via screenshot: Content Protection's
-// nav bar and match-details video panel are position: sticky *within* the scrollable container's
-// own bounds, so cropping to that container doesn't exclude them -- they render at the same
-// on-screen spot in every slice regardless). This version compares each captured slice against the
-// previous one and only draws the rows that actually changed (see measureStickyRows) -- the
-// standard technique real full-page-screenshot tools use for exactly this. Also re-measures the
-// scroll container's height at every step rather than trusting one reading taken before scrolling
-// started, since a page whose content grows as more of it comes into view (confirmed live: the
-// previous version cut off before the actual bottom) would otherwise stop short.
+// Each chrome.scripting.executeScript() call below re-declares its own copy of a
+// findScrollContainer() helper -- functions passed to that API must be fully self-contained (no
+// closures over anything outside the function body), so it can't be shared as a normal helper the
+// way everything else in this file is. Finds the element with the largest scroll overflow
+// (scrollHeight - clientHeight) among anything with overflow-y: auto/scroll, falling back to the
+// page's own scrolling element when nothing else overflows -- some pages (Content Protection's
+// match-details view, possibly) keep their content in an independently-scrolling inner pane rather
+// than scrolling the whole document, where window.scrollTo() is a no-op. Kept as a real fallback
+// for whatever a single zoomed-out shot still doesn't cover, on top of the zoom-stepping below, not
+// instead of it.
 async function captureFullPageScreenshot(tabId: number, windowId: number): Promise<string> {
   const originalZoom = await chrome.tabs.getZoom(tabId);
-  await chrome.tabs.setZoom(tabId, 1);
 
   try {
-    // Pause any playing video before capturing -- confirmed live: a match's video panel is
-    // position: sticky (stays in the same on-screen spot regardless of scroll, which the trimming
-    // below is built to detect and skip on repeat) BUT was still playing, so its own pixels kept
-    // changing between captures (0:05 -> 0:06 in one reported screenshot) -- measureStickyRows
-    // correctly-but-wrongly read that as "this changed, it must be new content" and drew it again.
-    // A static, unmoving frame is exactly what the comparison needs to recognize it as sticky.
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      func: () => {
-        for (const video of document.querySelectorAll("video")) video.pause();
-      },
-    });
+    type ScreenshotDims = { width: number; height: number; windowWidth: number; windowHeight: number };
+    let dims: ScreenshotDims | null = null;
 
-    type CropInfo = { cropLeft: number; cropTop: number; cropWidth: number; cropHeight: number; devicePixelRatio: number };
-    type StepResult = { scrollTop: number; scrollHeight: number };
-
-    // findScrollContainer() previously re-ran its whole "find the biggest overflow" heuristic fresh
-    // on every single chrome.scripting.executeScript() call (each is a separate, memoryless script
-    // injection). If content loads in as the page is scrolled -- confirmed true, that's why
-    // scrollHeight gets re-measured every step below -- it's possible a DIFFERENT element becomes
-    // "the biggest overflow" partway through, meaning later steps could measure/scroll/crop a
-    // different container than the first one did. That alone would misalign the pixel comparison
-    // for every slice, not just the video. Fixed by finding the container once and stamping it
-    // with a marker attribute, so every later call finds that exact same element directly instead
-    // of re-guessing -- one fixed identity, one fixed crop rect, used for the whole capture.
-    const SCROLL_MARKER = "data-viral-drm-scroll-target";
-
-    const [{ result: initial }] = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: (marker: string) => {
-        function findScrollContainer(): Element {
-          let best: Element = document.scrollingElement || document.documentElement;
-          let bestOverflow = best.scrollHeight - best.clientHeight;
-          for (const el of document.querySelectorAll<HTMLElement>("*")) {
-            if (el.clientHeight === 0) continue;
-            const style = getComputedStyle(el);
-            if (!/(auto|scroll)/.test(style.overflowY)) continue;
-            const overflow = el.scrollHeight - el.clientHeight;
-            if (overflow > bestOverflow) {
-              best = el;
-              bestOverflow = overflow;
-            }
-          }
-          return best;
-        }
-        const container = findScrollContainer();
-        container.setAttribute(marker, "true");
-        const rect = container.getBoundingClientRect();
-        return {
-          scrollTop: container.scrollTop,
-          scrollHeight: container.scrollHeight,
-          cropLeft: Math.max(0, rect.left),
-          cropTop: Math.max(0, rect.top),
-          cropWidth: Math.min(rect.width, window.innerWidth),
-          cropHeight: Math.min(rect.height, window.innerHeight),
-          devicePixelRatio: window.devicePixelRatio || 1,
-        };
-      },
-      args: [SCROLL_MARKER],
-    });
-    const crop = initial as CropInfo & StepResult;
-    console.info("[viral-drm] screenshot: crop bounds", crop);
-
-    // Every later step scrolls the SAME marked element and re-measures only scrollTop/scrollHeight
-    // (which genuinely can change as content loads) -- deliberately not the crop rect, which stays
-    // fixed at what was measured above so every slice is cropped identically and lines up for
-    // comparison.
-    function scrollMarkedContainer(marker: string, y: number): StepResult {
-      const container = document.querySelector(`[${marker}]`) ?? document.scrollingElement ?? document.documentElement;
-      container.scrollTo(0, y);
-      return { scrollTop: (container as HTMLElement).scrollTop, scrollHeight: container.scrollHeight };
-    }
-
-    const screenshots: { dataUrl: string }[] = [];
-    let requestedY = 0;
-    let lastScrollTop = -1;
-    let scrollHeight = crop.scrollHeight;
-
-    for (;;) {
+    for (const candidate of ZOOM_CANDIDATES) {
+      await chrome.tabs.setZoom(tabId, candidate);
       const [{ result }] = await chrome.scripting.executeScript({
         target: { tabId },
-        func: scrollMarkedContainer,
-        args: [SCROLL_MARKER, requestedY],
+        func: () => {
+          function findScrollContainer(): Element {
+            let best: Element = document.scrollingElement || document.documentElement;
+            let bestOverflow = best.scrollHeight - best.clientHeight;
+            for (const el of document.querySelectorAll<HTMLElement>("*")) {
+              const style = getComputedStyle(el);
+              if (!/(auto|scroll)/.test(style.overflowY)) continue;
+              const overflow = el.scrollHeight - el.clientHeight;
+              if (overflow > bestOverflow) {
+                best = el;
+                bestOverflow = overflow;
+              }
+            }
+            return best;
+          }
+          const container = findScrollContainer();
+          return {
+            width: Math.max(container.scrollWidth, window.innerWidth),
+            height: container.scrollHeight,
+            windowWidth: window.innerWidth,
+            windowHeight: window.innerHeight,
+          };
+        },
       });
-      const step = result as StepResult;
-      if (step.scrollTop === lastScrollTop) break; // no further scroll room — already captured this position
-      scrollHeight = step.scrollHeight;
+      dims = result as ScreenshotDims;
+      // Fits in essentially one shot at this zoom -- good enough, stop here rather than zoom out
+      // any further than this page actually needs.
+      if (dims.height <= dims.windowHeight * 1.05) break;
+    }
+    const { width, height, windowWidth, windowHeight } = dims!;
 
-      // A short pause before capturing -- otherwise captureVisibleTab can grab a frame from just
-      // before the scroll (or a re-render it triggered) has actually finished painting. Longer on
-      // the very first capture, giving a video element a moment to render its poster frame instead
-      // of the solid black placeholder it starts with.
-      await new Promise((resolve) => setTimeout(resolve, screenshots.length === 0 ? 400 : 200));
+    const screenshots: { y: number; dataUrl: string }[] = [];
+    let requestedY = 0;
+    let lastCapturedY = -1;
+
+    for (;;) {
+      const [{ result: actualY }] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (y: number) => {
+          function findScrollContainer(): Element {
+            let best: Element = document.scrollingElement || document.documentElement;
+            let bestOverflow = best.scrollHeight - best.clientHeight;
+            for (const el of document.querySelectorAll<HTMLElement>("*")) {
+              const style = getComputedStyle(el);
+              if (!/(auto|scroll)/.test(style.overflowY)) continue;
+              const overflow = el.scrollHeight - el.clientHeight;
+              if (overflow > bestOverflow) {
+                best = el;
+                bestOverflow = overflow;
+              }
+            }
+            return best;
+          }
+          const container = findScrollContainer();
+          container.scrollTo(0, y);
+          return container.scrollTop;
+        },
+        args: [requestedY],
+      });
+      if (actualY === lastCapturedY) break; // no further scroll room — already captured this position
 
       const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
-      screenshots.push({ dataUrl });
-      lastScrollTop = step.scrollTop;
+      screenshots.push({ y: actualY as number, dataUrl });
+      lastCapturedY = actualY as number;
 
-      if (step.scrollTop + crop.cropHeight >= step.scrollHeight) break; // just captured the bottom
-      requestedY += crop.cropHeight;
+      if ((actualY as number) + windowHeight >= height) break; // just captured the bottom
+      requestedY += windowHeight;
     }
-    console.info("[viral-drm] screenshot: captured", { slices: screenshots.length, finalScrollHeight: scrollHeight });
 
-    // Load every slice and extract its cropped region as ImageData up front -- needed both for the
-    // sticky-row comparison below and for the final draw, via one reusable offscreen canvas sized
-    // to the single shared crop rect -- every slice uses the exact same bounds now, so they're
-    // guaranteed pixel-aligned for comparison (the previous per-slice re-measurement was the bug
-    // fixed above).
-    const dpr = crop.devicePixelRatio;
-    const srcX = Math.round(crop.cropLeft * dpr);
-    const srcY = Math.round(crop.cropTop * dpr);
-    const srcW = Math.round(crop.cropWidth * dpr);
-    const srcH = Math.round(crop.cropHeight * dpr);
-    const sampleCanvas = document.createElement("canvas");
-    sampleCanvas.width = srcW;
-    sampleCanvas.height = srcH;
-    const sampleCtx = sampleCanvas.getContext("2d")!;
-    const regions = await Promise.all(
-      screenshots.map(async ({ dataUrl }) => {
-        const img = new Image();
-        img.src = dataUrl;
-        await new Promise<void>((resolve) => (img.onload = () => resolve()));
-        sampleCtx.clearRect(0, 0, srcW, srcH);
-        sampleCtx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
-        return { width: srcW, height: srcH, data: sampleCtx.getImageData(0, 0, srcW, srcH) };
-      })
-    );
-
-    // First pass: how many rows at the top of each slice (after the first) are sticky content
-    // repeated from the previous slice, and therefore should NOT be drawn again.
-    const contributions = regions.map((region, i) => {
-      const skipRows = i === 0 ? 0 : measureStickyRows(regions[i - 1].data, region.data, region.width, region.height);
-      return { region, skipRows, drawHeight: region.height - skipRows };
-    });
-    const totalHeight = contributions.reduce((sum, c) => sum + c.drawHeight, 0);
-    const width = Math.max(1, ...regions.map((r) => r.width));
-
-    // Second pass: draw each slice's non-repeated portion at its correct cumulative position.
-    // putImageData's 7-arg form paints only a sub-rectangle of the source data (dirtyX/dirtyY/
-    // dirtyWidth/dirtyHeight, in the ImageData's own coordinates) at (dx + dirtyX, dy + dirtyY) --
-    // used here to skip the sticky rows without needing a second temporary canvas per slice, and
-    // (unlike drawImage) it bypasses canvas transforms entirely, so it's exact device pixels in,
-    // exact device pixels out.
     const canvas = document.createElement("canvas");
     canvas.width = width;
-    canvas.height = Math.max(1, totalHeight);
+    canvas.height = height;
     const ctx = canvas.getContext("2d")!;
-    let y = 0;
-    for (const c of contributions) {
-      if (c.drawHeight > 0) ctx.putImageData(c.region.data, 0, y - c.skipRows, 0, c.skipRows, c.region.width, c.drawHeight);
-      y += c.drawHeight;
+    for (const shot of screenshots) {
+      const img = new Image();
+      img.src = shot.dataUrl;
+      await new Promise<void>((resolve) => (img.onload = () => resolve()));
+      ctx.drawImage(img, 0, shot.y, windowWidth, windowHeight);
     }
     return canvas.toDataURL("image/png");
   } finally {
