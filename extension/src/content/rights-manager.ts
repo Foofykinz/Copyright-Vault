@@ -221,14 +221,28 @@ if (RIGHTS_MANAGER_HOSTS.has(location.hostname.replace(/^www\./, ""))) {
     return null;
   }
 
-  /** Match ID/Video ID card ("More details") and match-duration/reference-file details ("Your
-   * protected content") weren't in the DOM sample this was built from — only the video-player and
-   * account/link card were. Match ID and Video ID are attempted via readLabeledValue() anyway,
-   * betting that Meta reused the same internal label/value component for that "More details" card
-   * (the label text is identical to legacy Rights Manager's) -- unconfirmed, so treated as
-   * best-effort: null rather than a hard failure if the bet is wrong. Match duration and reference
-   * files aren't attempted at all rather than guess blindly; add them once that section's DOM is
-   * available.
+  /** Confirmed live DOM for the "More details" panel's simple label/value rows (Match ID
+   * specifically -- Video ID and Date detected are a reasonable bet, being the same kind of
+   * simple text value, not confirmed independently): a label <span> inside one <div>, immediately
+   * followed by a sibling <div> whose own <span> holds the value --
+   * `<div><span>Match ID</span></div><div><span>2268962413853082</span></div>`. Nothing like
+   * legacy Rights Manager's div[role="heading"] pattern, which is exactly why readLabeledValue()
+   * never found anything here. Matched by exact span text + immediate sibling structure, not by
+   * either div's generated class name (those are unstable, per the DOM samples seen so far --
+   * "Match ID"'s wrapper class doesn't even match "Attributes"'s wrapper class on the same page). */
+  function readMoreDetailsValue(label: string): string | null {
+    for (const span of document.querySelectorAll<HTMLElement>("span")) {
+      if (cleanText(span.textContent) !== label) continue;
+      const valueWrapper = span.parentElement?.nextElementSibling;
+      const value = cleanText(valueWrapper?.querySelector("span")?.textContent ?? valueWrapper?.textContent);
+      if (value) return value;
+    }
+    return null;
+  }
+
+  /** Match duration and reference-file details ("Your protected content" section) weren't in any
+   * DOM sample this was built from -- not attempted rather than guessed blindly; add them once
+   * that section's DOM is available.
    *
    * "Date detected" is used as postedAt since there's no other date on this page to use — but it's
    * a materially different thing (when Meta found the match, not when the infringing content was
@@ -242,17 +256,17 @@ if (RIGHTS_MANAGER_HOSTS.has(location.hostname.replace(/^www\./, ""))) {
     const infringerProfileUrl = profileLink?.href ? stripFbclid(unwrapFacebookRedirect(profileLink.href)) : null;
     const infringerName = profileLink ? cleanText(profileLink.textContent) : "";
 
-    const matchId = readLabeledValue("Match ID");
+    const matchId = readMoreDetailsValue("Match ID");
     if (!matchId) return { ok: false, error: 'Couldn\'t find a "Match ID" on this page — make sure a match\'s details are open.' };
 
-    const dateDetectedText = readLabeledValue("Date detected");
+    const dateDetectedText = readMoreDetailsValue("Date detected");
     const parsedDate = dateDetectedText ? new Date(dateDetectedText) : null;
     const postedAt = parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate.toISOString() : null;
     if (!postedAt) return { ok: false, error: 'Couldn\'t find/parse a "Date detected" value on this page.' };
 
     const match: CapturedMatch = {
       metaMatchId: matchId,
-      metaVideoId: readLabeledValue("Video ID"),
+      metaVideoId: readMoreDetailsValue("Video ID"),
       infringerName: infringerName || "Unknown",
       infringingUrl,
       platform: detectPlatformFromUrl(infringingUrl),

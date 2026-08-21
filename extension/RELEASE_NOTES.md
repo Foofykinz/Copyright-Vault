@@ -1,6 +1,6 @@
-- Fixed Content Protection never actually activating on an individual match's page (the side panel stayed on its normal fallback view instead of switching to the capture UI). The previous detection guessed at the page's header markup ("Content protection" + "Match details" as heading text), which was never confirmed against real DOM and turned out not to match live. Now detects using only confirmed signals: the real URL (/professional_dashboard/content/content_protection) plus the "See post" link that's confirmed present on an individual match's page but not on the overview/list page
-- Fixed Content Protection not activating at all on web.facebook.com/professional_dashboard/ — it's a different host than Business Manager, not just a different path
-- Hardened Content Protection page detection so it can't misfire on a legacy Rights Manager page
+- Fixed Content Protection captures failing to find Match ID/Video ID/Date detected — that section of the page uses a completely different label/value structure than legacy Rights Manager (confirmed from real DOM this time, not guessed), and the old reader was never going to find anything there
+- Fixed Content Protection never actually activating on an individual match's page at all
+- Fixed Content Protection not activating on web.facebook.com/professional_dashboard/ — different host than Business Manager
 - Added a console log on every capture showing exactly which parser handled it — check DevTools' console for a line starting with "[viral-drm]" if something still looks off
 - New: capture matches from Meta's newer Content Protection interface alongside the classic Rights Manager interface (WX Chasing, unchanged)
 - Fixed the infringing link sometimes coming through as a raw Facebook redirect wrapper instead of the real URL
