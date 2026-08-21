@@ -683,8 +683,7 @@ async function sendSelected(): Promise<void> {
  * manifest.json's host_permissions. */
 // Tried Chrome's practical floor (0.25) to fit more of a tall page per captured slice, but that
 // came back "wonky, zooming out way too much" -- distorts the screenshot's usefulness more than it
-// helps. Capped at 0.5 instead; the scroll-stitch loop below still covers whatever doesn't fit in
-// one shot at this zoom, just in more steps.
+// helps. Capped at 0.5.
 const SCREENSHOT_ZOOM = 0.5;
 
 async function captureFullPageScreenshot(tabId: number, windowId: number): Promise<string> {
@@ -692,14 +691,47 @@ async function captureFullPageScreenshot(tabId: number, windowId: number): Promi
   await chrome.tabs.setZoom(tabId, SCREENSHOT_ZOOM);
 
   try {
+    // At 0.5 zoom, a screenshot was still coming back incomplete ("not zooming out to capture the
+    // whole screen") even though 0.25 had captured everything (just too small/"wonky" to be
+    // useful). That pattern only makes sense if the real content lives in an
+    // independently-scrolling inner pane (confirmed live: Content Protection's match-details view)
+    // rather than the whole page scrolling -- window.scrollTo() is a no-op there, so this was
+    // always just capturing whatever was visible in that pane at the start and calling it done; it
+    // only ever looked "complete" at 0.25 because the pane's content happened to fit within one
+    // viewport at that zoom, not because scrolling was actually working. findScrollContainer below
+    // finds and scrolls the actual overflowing element (largest scrollHeight - clientHeight among
+    // anything with overflow-y: auto/scroll) instead of assuming it's always the window -- falls
+    // back to the page's own scrolling element when nothing else overflows, so this doesn't change
+    // behavior for a normal whole-page-scroll page like legacy Rights Manager.
+    //
+    // Duplicated verbatim into both chrome.scripting.executeScript() calls below rather than
+    // shared as a normal helper -- functions passed to that API must be fully self-contained (no
+    // closures over anything outside the function body).
     const [{ result: dims }] = await chrome.scripting.executeScript({
       target: { tabId },
-      func: () => ({
-        width: document.documentElement.scrollWidth,
-        height: document.documentElement.scrollHeight,
-        windowWidth: window.innerWidth,
-        windowHeight: window.innerHeight,
-      }),
+      func: () => {
+        function findScrollContainer(): Element {
+          let best: Element = document.scrollingElement || document.documentElement;
+          let bestOverflow = best.scrollHeight - best.clientHeight;
+          for (const el of document.querySelectorAll<HTMLElement>("*")) {
+            const style = getComputedStyle(el);
+            if (!/(auto|scroll)/.test(style.overflowY)) continue;
+            const overflow = el.scrollHeight - el.clientHeight;
+            if (overflow > bestOverflow) {
+              best = el;
+              bestOverflow = overflow;
+            }
+          }
+          return best;
+        }
+        const container = findScrollContainer();
+        return {
+          width: Math.max(container.scrollWidth, window.innerWidth),
+          height: container.scrollHeight,
+          windowWidth: window.innerWidth,
+          windowHeight: window.innerHeight,
+        };
+      },
     });
     const { width, height, windowWidth, windowHeight } = dims as {
       width: number;
@@ -716,8 +748,23 @@ async function captureFullPageScreenshot(tabId: number, windowId: number): Promi
       const [{ result: actualY }] = await chrome.scripting.executeScript({
         target: { tabId },
         func: (y: number) => {
-          window.scrollTo(0, y);
-          return window.scrollY;
+          function findScrollContainer(): Element {
+            let best: Element = document.scrollingElement || document.documentElement;
+            let bestOverflow = best.scrollHeight - best.clientHeight;
+            for (const el of document.querySelectorAll<HTMLElement>("*")) {
+              const style = getComputedStyle(el);
+              if (!/(auto|scroll)/.test(style.overflowY)) continue;
+              const overflow = el.scrollHeight - el.clientHeight;
+              if (overflow > bestOverflow) {
+                best = el;
+                bestOverflow = overflow;
+              }
+            }
+            return best;
+          }
+          const container = findScrollContainer();
+          container.scrollTo(0, y);
+          return container.scrollTop;
         },
         args: [requestedY],
       });

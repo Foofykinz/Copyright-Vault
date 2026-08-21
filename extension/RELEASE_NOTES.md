@@ -1,11 +1,12 @@
-- New: the match review card now shows the captured infringing link before you send — it was never actually displayed anywhere before, so there was no way to visually confirm it was right (or even that it was captured at all) before hitting Send
-- Fixed Content Protection reference file titles picking up extra/wrong text (a "<duration>s, <percent>% of the protected content" line and a duplicate percentage badge were bleeding into the title) — now reads the title's own row directly
+- Fixed screenshots on Content Protection's match-details page silently capturing only whatever was on screen at the start, not the whole page — that page keeps its content in its own scrolling panel rather than scrolling the whole browser window, and the screenshot tool was only ever trying to scroll the window. It now finds and scrolls the actual panel. One known possible side effect: if there's a header/nav bar that stays fixed while the panel scrolls, it may appear repeated in the stitched image — let me know if that's actually a problem in practice, there's a more involved fix for it if so
 - Fixed the screenshot zoom-out being too aggressive (25%) and producing a distorted image — capped back at 50%
+- New: the match review card now shows the captured infringing link before you send
+- Fixed Content Protection reference file titles picking up extra/wrong text
 - New: Content Protection captures now include reference file names
 - Fixed Content Protection captures failing to find Match ID/Video ID/Date detected
 - Fixed Content Protection never actually activating on an individual match's page at all
 - Fixed Content Protection not activating on web.facebook.com/professional_dashboard/ — different host than Business Manager
-- Added a console log on every capture showing exactly which parser handled it, and the full captured record for Content Protection matches — check DevTools' console for a line starting with "[viral-drm]" if something still looks off
+- Added a console log on every capture showing exactly which parser handled it, and the full captured record for Content Protection matches
 - New: capture matches from Meta's newer Content Protection interface alongside the classic Rights Manager interface (WX Chasing, unchanged)
 - Fixed match screenshots failing with a permissions error
 - New: mark whether the infringing video is still available while reviewing a captured match
