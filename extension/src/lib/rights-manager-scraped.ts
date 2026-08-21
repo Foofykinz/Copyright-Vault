@@ -5,6 +5,16 @@ export const RIGHTS_MANAGER_MATCHES_SOURCE = "viral-drm-rights-manager-matches";
 
 export const COLLECT_CURRENT_MATCH_MESSAGE = "viral-drm-collect-current-match";
 
+/** Hosts Meta serves a match-review interface from. business.facebook.com is Business Manager
+ * (classic Rights Manager, confirmed live for WX Chasing). web.facebook.com is the regular
+ * logged-in web app's Professional Dashboard (confirmed live: Content Protection reached via
+ * web.facebook.com/professional_dashboard/, NOT Business Manager, for at least one account) --
+ * these are genuinely different hostnames, not a typo/alias of each other. Shared between the
+ * popup (deciding whether to even ask the content script) and the content script itself (deciding
+ * whether to activate at all) so the two can't drift apart the way business.facebook.com being
+ * hardcoded in both places independently just did. */
+export const RIGHTS_MANAGER_HOSTS = new Set(["business.facebook.com", "web.facebook.com"]);
+
 export const DETECT_RIGHTS_MANAGER_PAGE_MESSAGE = "viral-drm-detect-rights-manager-page";
 
 /** Which Meta match-review interface (if any) the active tab's content script recognizes the

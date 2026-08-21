@@ -5,6 +5,7 @@ import { ENRICH_VIEW_COUNTS_MESSAGE, SCAN_MESSAGE, type EnrichViewCountsResult, 
 import {
   COLLECT_CURRENT_MATCH_MESSAGE,
   DETECT_RIGHTS_MANAGER_PAGE_MESSAGE,
+  RIGHTS_MANAGER_HOSTS,
   type CapturedMatch,
   type CollectMatchResult,
   type DetectRightsManagerPageResult,
@@ -110,10 +111,10 @@ const state: State = {
   matchStatus: null,
 };
 
-function isBusinessFacebookTab(url: string | undefined): boolean {
+function isRightsManagerHostTab(url: string | undefined): boolean {
   if (!url) return false;
   try {
-    return new URL(url).hostname.replace(/^www\./, "") === "business.facebook.com";
+    return RIGHTS_MANAGER_HOSTS.has(new URL(url).hostname.replace(/^www\./, ""));
   } catch {
     return false;
   }
@@ -121,12 +122,13 @@ function isBusinessFacebookTab(url: string | undefined): boolean {
 
 /** Whether the given tab is a page content/rights-manager.ts recognizes as a match-review page —
  * either interface, classic Rights Manager or the newer Content Protection. Content-based (asks
- * the content script, which inspects the live page), not URL-based: Content Protection has no
+ * the content script, which inspects the live page), not URL-path-based: Content Protection has no
  * confirmed URL pattern to check against, unlike classic Rights Manager's "/rights_manager/". Only
- * messages the content script at all when the host matches, so this doesn't add a round-trip to
- * every tab on every poll tick — just ones already on business.facebook.com. */
+ * messages the content script at all when the host is a known one (RIGHTS_MANAGER_HOSTS), so this
+ * doesn't add a round-trip to every tab on every poll tick — just ones already on a host that could
+ * plausibly be showing one of these interfaces. */
 async function detectRightsManagerTab(tab: chrome.tabs.Tab | undefined): Promise<boolean> {
-  if (!isBusinessFacebookTab(tab?.url) || tab?.id === undefined) return false;
+  if (!isRightsManagerHostTab(tab?.url) || tab?.id === undefined) return false;
   try {
     const result = (await chrome.tabs.sendMessage(tab.id, { type: DETECT_RIGHTS_MANAGER_PAGE_MESSAGE })) as
       | DetectRightsManagerPageResult
