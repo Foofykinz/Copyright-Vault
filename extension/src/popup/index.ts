@@ -711,65 +711,75 @@ async function sendSelected(): Promise<void> {
  * contents of url..." on the executeScript calls; without "<all_urls>" specifically, captureVisibleTab
  * separately throws "Either the '<all_urls>' or 'activeTab' permission is required." See
  * manifest.json's host_permissions. */
-// Tried a single fixed zoom twice (0.5 then 0.25) and neither was right for every page: 0.25
-// confirmed it CAN capture Content Protection's match-details page completely, just too small to
-// read comfortably; 0.5 didn't capture it fully. Rather than guess a third fixed number, try zoom
-// levels from most-readable to least and stop at the first one a page actually fits into,
-// most-to-least aggressive -- 0.25 is never worse than the version that was already confirmed
-// working, and pages that fit at a gentler zoom get a more readable screenshot automatically.
-const ZOOM_CANDIDATES = [0.5, 0.35, 0.25];
-
-// Each chrome.scripting.executeScript() call below re-declares its own copy of a
-// findScrollContainer() helper -- functions passed to that API must be fully self-contained (no
-// closures over anything outside the function body), so it can't be shared as a normal helper the
-// way everything else in this file is. Finds the element with the largest scroll overflow
-// (scrollHeight - clientHeight) among anything with overflow-y: auto/scroll, falling back to the
-// page's own scrolling element when nothing else overflows -- some pages (Content Protection's
-// match-details view, possibly) keep their content in an independently-scrolling inner pane rather
-// than scrolling the whole document, where window.scrollTo() is a no-op. Kept as a real fallback
-// for whatever a single zoomed-out shot still doesn't cover, on top of the zoom-stepping below, not
-// instead of it.
+// Reworked after two zoom-based attempts (0.5, then a 0.5/0.35/0.25 step-down) both traded away
+// readability to guarantee completeness. Back to normal size (no zoom change at all) and real
+// scrolling instead -- the thing that actually needs to be right is finding and scrolling the
+// correct element, and cropping each captured slice to just that element's own on-screen bounds
+// rather than the whole browser viewport. Cropping is what's new here: capturing the full viewport
+// at each scroll step (the original approach) would show any fixed header/nav repeated at every
+// stitched slice if the real content sits in an independently-scrolling inner pane rather than the
+// whole page scrolling -- cropping to the pane's own bounds avoids that. Costs nothing for a
+// normal whole-page-scroll page (legacy Rights Manager): the "container" there is the page itself,
+// so its bounds already are the whole viewport, and cropping to it is a no-op.
 async function captureFullPageScreenshot(tabId: number, windowId: number): Promise<string> {
   const originalZoom = await chrome.tabs.getZoom(tabId);
+  await chrome.tabs.setZoom(tabId, 1);
 
   try {
-    type ScreenshotDims = { width: number; height: number; windowWidth: number; windowHeight: number };
-    let dims: ScreenshotDims | null = null;
+    type CaptureSetup = {
+      scrollHeight: number;
+      cropLeft: number;
+      cropTop: number;
+      cropWidth: number;
+      cropHeight: number;
+      devicePixelRatio: number;
+      containerTag: string;
+      containerClass: string | null;
+    };
 
-    for (const candidate of ZOOM_CANDIDATES) {
-      await chrome.tabs.setZoom(tabId, candidate);
-      const [{ result }] = await chrome.scripting.executeScript({
-        target: { tabId },
-        func: () => {
-          function findScrollContainer(): Element {
-            let best: Element = document.scrollingElement || document.documentElement;
-            let bestOverflow = best.scrollHeight - best.clientHeight;
-            for (const el of document.querySelectorAll<HTMLElement>("*")) {
-              const style = getComputedStyle(el);
-              if (!/(auto|scroll)/.test(style.overflowY)) continue;
-              const overflow = el.scrollHeight - el.clientHeight;
-              if (overflow > bestOverflow) {
-                best = el;
-                bestOverflow = overflow;
-              }
+    // Each chrome.scripting.executeScript() call below re-declares its own copy of
+    // findScrollContainer() -- functions passed to that API must be fully self-contained (no
+    // closures over anything outside the function body). Finds the element with the largest
+    // scroll overflow (scrollHeight - clientHeight, and actually laid out -- clientHeight > 0)
+    // among anything with overflow-y: auto/scroll, falling back to the page's own scrolling
+    // element when nothing else overflows.
+    const [{ result: setupResult }] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        function findScrollContainer(): Element {
+          let best: Element = document.scrollingElement || document.documentElement;
+          let bestOverflow = best.scrollHeight - best.clientHeight;
+          for (const el of document.querySelectorAll<HTMLElement>("*")) {
+            if (el.clientHeight === 0) continue;
+            const style = getComputedStyle(el);
+            if (!/(auto|scroll)/.test(style.overflowY)) continue;
+            const overflow = el.scrollHeight - el.clientHeight;
+            if (overflow > bestOverflow) {
+              best = el;
+              bestOverflow = overflow;
             }
-            return best;
           }
-          const container = findScrollContainer();
-          return {
-            width: Math.max(container.scrollWidth, window.innerWidth),
-            height: container.scrollHeight,
-            windowWidth: window.innerWidth,
-            windowHeight: window.innerHeight,
-          };
-        },
-      });
-      dims = result as ScreenshotDims;
-      // Fits in essentially one shot at this zoom -- good enough, stop here rather than zoom out
-      // any further than this page actually needs.
-      if (dims.height <= dims.windowHeight * 1.05) break;
-    }
-    const { width, height, windowWidth, windowHeight } = dims!;
+          return best;
+        }
+        const container = findScrollContainer();
+        const rect = container.getBoundingClientRect();
+        return {
+          scrollHeight: container.scrollHeight,
+          cropLeft: Math.max(0, rect.left),
+          cropTop: Math.max(0, rect.top),
+          cropWidth: Math.min(rect.width, window.innerWidth),
+          cropHeight: Math.min(rect.height, window.innerHeight),
+          devicePixelRatio: window.devicePixelRatio || 1,
+          containerTag: container.tagName,
+          containerClass: (container as HTMLElement).className || null,
+        };
+      },
+    });
+    const setup = setupResult as CaptureSetup;
+    // One line, not a diagnostic build -- if this still isn't right for some page shape, this is
+    // what to check first instead of guessing again: DevTools console on the page, look for
+    // "[viral-drm] screenshot: capture setup".
+    console.info("[viral-drm] screenshot: capture setup", setup);
 
     const screenshots: { y: number; dataUrl: string }[] = [];
     let requestedY = 0;
@@ -783,6 +793,7 @@ async function captureFullPageScreenshot(tabId: number, windowId: number): Promi
             let best: Element = document.scrollingElement || document.documentElement;
             let bestOverflow = best.scrollHeight - best.clientHeight;
             for (const el of document.querySelectorAll<HTMLElement>("*")) {
+              if (el.clientHeight === 0) continue;
               const style = getComputedStyle(el);
               if (!/(auto|scroll)/.test(style.overflowY)) continue;
               const overflow = el.scrollHeight - el.clientHeight;
@@ -801,23 +812,33 @@ async function captureFullPageScreenshot(tabId: number, windowId: number): Promi
       });
       if (actualY === lastCapturedY) break; // no further scroll room — already captured this position
 
+      // A short pause before capturing -- otherwise captureVisibleTab can grab a frame from just
+      // before the scroll (or a re-render it triggered) has actually finished painting.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
       const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
       screenshots.push({ y: actualY as number, dataUrl });
       lastCapturedY = actualY as number;
 
-      if ((actualY as number) + windowHeight >= height) break; // just captured the bottom
-      requestedY += windowHeight;
+      if ((actualY as number) + setup.cropHeight >= setup.scrollHeight) break; // just captured the bottom
+      requestedY += setup.cropHeight;
     }
 
+    const dpr = setup.devicePixelRatio;
+    const srcX = Math.round(setup.cropLeft * dpr);
+    const srcY = Math.round(setup.cropTop * dpr);
+    const srcW = Math.round(setup.cropWidth * dpr);
+    const srcH = Math.round(setup.cropHeight * dpr);
+
     const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
+    canvas.width = srcW;
+    canvas.height = Math.round(setup.scrollHeight * dpr);
     const ctx = canvas.getContext("2d")!;
     for (const shot of screenshots) {
       const img = new Image();
       img.src = shot.dataUrl;
       await new Promise<void>((resolve) => (img.onload = () => resolve()));
-      ctx.drawImage(img, 0, shot.y, windowWidth, windowHeight);
+      ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, Math.round(shot.y * dpr), srcW, srcH);
     }
     return canvas.toDataURL("image/png");
   } finally {
