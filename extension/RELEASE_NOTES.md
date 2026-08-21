@@ -1,9 +1,11 @@
-- Fixed the screenshot zoom-out being way too aggressive (25%) and producing a distorted/unusable image — capped back at 50%
-- New: Content Protection captures now include reference file names (the "Your protected content" matched asset(s)) — title text may still be incomplete on some matches, being tightened up
+- New: the match review card now shows the captured infringing link before you send — it was never actually displayed anywhere before, so there was no way to visually confirm it was right (or even that it was captured at all) before hitting Send
+- Fixed Content Protection reference file titles picking up extra/wrong text (a "<duration>s, <percent>% of the protected content" line and a duplicate percentage badge were bleeding into the title) — now reads the title's own row directly
+- Fixed the screenshot zoom-out being too aggressive (25%) and producing a distorted image — capped back at 50%
+- New: Content Protection captures now include reference file names
 - Fixed Content Protection captures failing to find Match ID/Video ID/Date detected
 - Fixed Content Protection never actually activating on an individual match's page at all
 - Fixed Content Protection not activating on web.facebook.com/professional_dashboard/ — different host than Business Manager
-- Added a console log on every capture showing exactly which parser handled it — check DevTools' console for a line starting with "[viral-drm]" if something still looks off
+- Added a console log on every capture showing exactly which parser handled it, and the full captured record for Content Protection matches — check DevTools' console for a line starting with "[viral-drm]" if something still looks off
 - New: capture matches from Meta's newer Content Protection interface alongside the classic Rights Manager interface (WX Chasing, unchanged)
 - Fixed match screenshots failing with a permissions error
 - New: mark whether the infringing video is still available while reviewing a captured match

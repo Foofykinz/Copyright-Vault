@@ -1061,6 +1061,14 @@ function renderMatchReviewCard(match: CapturedMatch): HTMLElement {
     match.infringerName = (e.target as HTMLInputElement).value;
   });
 
+  // The captured link was never actually shown anywhere in this card before -- staff had no way
+  // to visually confirm it was right before sending, which is very plausibly what "the link isn't
+  // being captured" reports were really about even when the underlying value was fine.
+  const linkField = el("div", { className: "field" }, [
+    el("label", { textContent: "Infringing link" }),
+    el("a", { href: match.infringingUrl, textContent: match.infringingUrl, target: "_blank", rel: "noreferrer" }),
+  ]);
+
   const notesField = el("div", { className: "field" }, [el("label", { textContent: "Notes" }), el("textarea", { value: match.notes, rows: 3 })]);
   (notesField.querySelector("textarea") as HTMLTextAreaElement).addEventListener("input", (e) => {
     match.notes = (e.target as HTMLTextAreaElement).value;
@@ -1109,7 +1117,7 @@ function renderMatchReviewCard(match: CapturedMatch): HTMLElement {
   const discardBtn = el("button", { textContent: "Discard", disabled: state.busy });
   discardBtn.addEventListener("click", () => discardCapturedMatch());
 
-  container.append(nameField, notesField, availabilityField);
+  container.append(nameField, linkField, notesField, availabilityField);
   if (privacyNote) container.appendChild(privacyNote);
   container.appendChild(readOnly);
   if (screenshot) container.appendChild(screenshot);

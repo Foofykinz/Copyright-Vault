@@ -240,15 +240,34 @@ if (RIGHTS_MANAGER_HOSTS.has(location.hostname.replace(/^www\./, ""))) {
     return null;
   }
 
+  /** Confirmed live DOM for a reference-asset card's text: the same "two sibling divs, each
+   * wrapping one span" row shape readMoreDetailsValue() already relies on for Match ID — the first
+   * holds the title (one level deeper, in a nested inner span, presumably for Meta's own
+   * ellipsis/truncation styling; textContent still returns the full underlying text regardless of
+   * how it's visually truncated on screen), the second holds a "<duration>s, <percent>% of the
+   * protected content" line that must NOT end up in the title. Not scoped to the "xu06os2" wrapper
+   * class directly (unstable/generated) -- instead finds the first descendant div whose only child
+   * is a single <span>, which is what that row's wrapper (and nothing else in the card — the
+   * thumbnail's wrapper holds an <svg>, the percentage badge holds a span AND an svg) actually is.
+   * Falls back to the anchor's full text with the known trailing pattern stripped off if that
+   * structural search ever comes up empty. */
+  function readReferenceFileTitle(link: HTMLAnchorElement): string {
+    const singleSpanDivs = [...link.querySelectorAll<HTMLElement>("div")].filter((div) => {
+      const children = [...div.children];
+      return children.length === 1 && children[0].tagName === "SPAN";
+    });
+    const primary = singleSpanDivs.length > 0 ? cleanText(singleSpanDivs[0].textContent) : "";
+    if (primary) return primary;
+
+    const rawTitle = cleanText(link.textContent);
+    return rawTitle.replace(/\d+(\.\d+)?s,\s*\d+%\s*of the protected content.*$/i, "").trim() || rawTitle;
+  }
+
   /** "Your protected content" reference asset(s) — confirmed DOM: each is a link to
    * /content_protection/protection_details/?asset_id=<id>, which conveniently hands over the id
-   * directly rather than needing to scrape it from somewhere else. The card's title text wasn't
-   * fully captured in the DOM sample this was built from (it was cut off after the thumbnail
-   * image), so the title is taken as the anchor's full visible text with the trailing
-   * "<duration>s, <percent>% of the protected content" line (confirmed from the match-details
-   * screenshot) stripped off the end — best-effort, not confirmed against the title's own markup.
-   * A match can carry more than one reference asset, so every matching link is collected, deduped
-   * by id in case the same asset is linked more than once in the card. */
+   * directly rather than needing to scrape it from somewhere else. A match can carry more than one
+   * reference asset, so every matching link is collected, deduped by id in case the same asset is
+   * linked more than once in the card. */
   function findReferenceFiles(): CapturedReferenceFile[] {
     const seen = new Set<string>();
     const files: CapturedReferenceFile[] = [];
@@ -260,8 +279,7 @@ if (RIGHTS_MANAGER_HOSTS.has(location.hostname.replace(/^www\./, ""))) {
         id = null;
       }
       if (!id || seen.has(id)) continue;
-      const rawTitle = cleanText(a.textContent);
-      const title = rawTitle.replace(/\d+(\.\d+)?s,\s*\d+%\s*of the protected content.*$/i, "").trim() || rawTitle;
+      const title = readReferenceFileTitle(a);
       if (!title) continue;
       seen.add(id);
       files.push({ id, title });
@@ -309,6 +327,11 @@ if (RIGHTS_MANAGER_HOSTS.has(location.hostname.replace(/^www\./, ""))) {
       referenceFiles: findReferenceFiles(),
       videoAvailable: null,
     };
+    // Logged unconditionally (not just on a suspected problem) -- reports so far ("link isn't
+    // being captured") haven't come with a description of what the bad value actually looked like,
+    // so this removes the ambiguity going forward: the real captured value, visible in DevTools'
+    // console, every single time.
+    console.info("[viral-drm] Content Protection match captured:", match);
     return { ok: true, match };
   }
 
