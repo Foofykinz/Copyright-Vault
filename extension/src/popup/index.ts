@@ -2,7 +2,13 @@ import { getConfig, updateConfig } from "../lib/storage";
 import { getSession, updateSession, type DateMode } from "../lib/session";
 import { extensionApi } from "../lib/api";
 import { ENRICH_VIEW_COUNTS_MESSAGE, SCAN_MESSAGE, type EnrichViewCountsResult, type ScanResult, type ScrapedVideo } from "../lib/scraped";
-import { COLLECT_CURRENT_MATCH_MESSAGE, type CapturedMatch, type CollectMatchResult } from "../lib/rights-manager-scraped";
+import {
+  COLLECT_CURRENT_MATCH_MESSAGE,
+  DETECT_RIGHTS_MANAGER_PAGE_MESSAGE,
+  type CapturedMatch,
+  type CollectMatchResult,
+  type DetectRightsManagerPageResult,
+} from "../lib/rights-manager-scraped";
 import type {
   Client,
   ExtensionInfringementReportImportInput,
@@ -104,13 +110,30 @@ const state: State = {
   matchStatus: null,
 };
 
-function isRightsManagerTab(url: string | undefined): boolean {
+function isBusinessFacebookTab(url: string | undefined): boolean {
   if (!url) return false;
   try {
-    const parsed = new URL(url);
-    return parsed.hostname.replace(/^www\./, "") === "business.facebook.com" && parsed.pathname.includes("/rights_manager/");
+    return new URL(url).hostname.replace(/^www\./, "") === "business.facebook.com";
   } catch {
     return false;
+  }
+}
+
+/** Whether the given tab is a page content/rights-manager.ts recognizes as a match-review page —
+ * either interface, classic Rights Manager or the newer Content Protection. Content-based (asks
+ * the content script, which inspects the live page), not URL-based: Content Protection has no
+ * confirmed URL pattern to check against, unlike classic Rights Manager's "/rights_manager/". Only
+ * messages the content script at all when the host matches, so this doesn't add a round-trip to
+ * every tab on every poll tick — just ones already on business.facebook.com. */
+async function detectRightsManagerTab(tab: chrome.tabs.Tab | undefined): Promise<boolean> {
+  if (!isBusinessFacebookTab(tab?.url) || tab?.id === undefined) return false;
+  try {
+    const result = (await chrome.tabs.sendMessage(tab.id, { type: DETECT_RIGHTS_MANAGER_PAGE_MESSAGE })) as
+      | DetectRightsManagerPageResult
+      | undefined;
+    return result?.recognized ?? false;
+  } catch {
+    return false; // content script not ready yet (e.g. page still loading) — retried next poll tick
   }
 }
 
@@ -279,7 +302,7 @@ async function init(): Promise<void> {
   const tab = await activeTab();
   state.tabPlatform = detectTabPlatform(tab?.url);
   state.tabUrl = tab?.url ?? null;
-  state.isRightsManager = isRightsManagerTab(tab?.url);
+  state.isRightsManager = await detectRightsManagerTab(tab);
 
   if (!state.apiBaseUrl || !state.apiToken) {
     state.showSettings = true;
@@ -419,7 +442,7 @@ async function refreshActiveTabInfo(): Promise<chrome.tabs.Tab | undefined> {
   if (tab?.url !== state.tabUrl) state.mismatchAcknowledged = false;
   state.tabPlatform = detectTabPlatform(tab?.url);
   state.tabUrl = tab?.url ?? null;
-  state.isRightsManager = isRightsManagerTab(tab?.url);
+  state.isRightsManager = await detectRightsManagerTab(tab);
   return tab;
 }
 

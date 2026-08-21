@@ -5,6 +5,19 @@ export const RIGHTS_MANAGER_MATCHES_SOURCE = "viral-drm-rights-manager-matches";
 
 export const COLLECT_CURRENT_MATCH_MESSAGE = "viral-drm-collect-current-match";
 
+export const DETECT_RIGHTS_MANAGER_PAGE_MESSAGE = "viral-drm-detect-rights-manager-page";
+
+/** Which Meta match-review interface (if any) the active tab's content script recognizes the
+ * current page as. Content-based (page text/DOM shape), not URL-based -- Content Protection's URL
+ * pattern isn't confirmed, and detecting by content is what lets the side panel decide whether to
+ * show the Rights Manager capture UI without needing to know it. */
+export type RightsManagerPageKind = "legacy" | "content_protection";
+
+export interface DetectRightsManagerPageResult {
+  recognized: boolean;
+  kind: RightsManagerPageKind | null;
+}
+
 /** One matched reference asset — a match can carry more than one. */
 export interface CapturedReferenceFile {
   id: string;

@@ -1,13 +1,22 @@
 import {
   COLLECT_CURRENT_MATCH_MESSAGE,
+  DETECT_RIGHTS_MANAGER_PAGE_MESSAGE,
   RIGHTS_MANAGER_MATCHES_SOURCE,
   type CapturedMatch,
   type CapturedReferenceFile,
   type CollectMatchResult,
+  type DetectRightsManagerPageResult,
   type RawCopyrightMatch,
+  type RightsManagerPageKind,
 } from "../lib/rights-manager-scraped";
 
-if (location.pathname.includes("/rights_manager/")) {
+// Broadened from a "/rights_manager/" path check to all of business.facebook.com (manifest.json's
+// content_scripts match pattern already scopes injection to that host, so this doesn't reach any
+// further than before) -- Meta's newer Content Protection interface doesn't have a confirmed URL
+// pattern to gate on, so page-kind detection below is content-based instead. This is cheap and
+// passive (a message listener + some DOM read helpers) until something actually asks it to act, so
+// it's safe to have present on every page on this host, not just match-review ones.
+if (location.hostname.replace(/^www\./, "") === "business.facebook.com") {
   // Accumulates every match the page has loaded (the copyright_matches response can arrive more
   // than once — e.g. the list paginating as you scroll it — so this merges rather than replaces,
   // same posture as facebook.ts's capturedStories). Indexed under three different candidate id
@@ -76,6 +85,26 @@ if (location.pathname.includes("/rights_manager/")) {
     return document.querySelector<HTMLAnchorElement>('a[target="_blank"][href]')?.href ?? null;
   }
 
+  function isLegacyRightsManagerPage(): boolean {
+    return location.pathname.includes("/rights_manager/");
+  }
+
+  /** Meta's newer Content Protection interface — confirmed live on the "Severe Studios" account,
+   * replacing classic Rights Manager for it (WX Chasing is still on the classic interface; this is
+   * per-account, not a platform-wide cutover as of this writing). No confirmed URL pattern to gate
+   * on, so detected by the page's own visible heading text instead, per the actual screenshot: a
+   * "Content protection" section containing a "Match details" page. */
+  function isContentProtectionMatchPage(): boolean {
+    const text = document.body.innerText;
+    return text.includes("Content protection") && text.includes("Match details");
+  }
+
+  function detectPageKind(): RightsManagerPageKind | null {
+    if (isContentProtectionMatchPage()) return "content_protection";
+    if (isLegacyRightsManagerPage()) return "legacy";
+    return null;
+  }
+
   /** Facebook wraps outbound links (confirmed live: an Instagram permalink surfaced on a
    * cross-posted match came back this way) in its own l.facebook.com/l.php?u=<encoded-url>&h=...
    * redirector rather than the real destination. Unwraps to the real URL when the link is shaped
@@ -129,6 +158,102 @@ if (location.pathname.includes("/rights_manager/")) {
     } catch {
       return "facebook";
     }
+  }
+
+  // ---- Content Protection ("Content protection" -> "Match details") ----
+  // Unlike legacy Rights Manager, this interface exposes the infringing post and the account
+  // profile as plain <a> elements with stable aria-labels/visible text (confirmed from real DOM,
+  // not guessed) -- no network interception needed here, at least not yet.
+
+  function stripFbclid(url: string): string {
+    try {
+      const parsed = new URL(url);
+      parsed.searchParams.delete("fbclid");
+      return parsed.toString();
+    } catch {
+      return url;
+    }
+  }
+
+  /** "See post" is the literal, exact visible text of the infringing-post link in every confirmed
+   * sample so far. Deliberately not scoped to any container -- Content Protection's page shell
+   * hasn't been captured, only this card, so a broad document-wide search is the safest bet. */
+  function findSeePostLink(): HTMLAnchorElement | null {
+    return [...document.querySelectorAll<HTMLAnchorElement>("a")].find((a) => cleanText(a.textContent) === "See post") ?? null;
+  }
+
+  /** Confirmed DOM has two copies of this link: one wrapping just the avatar (no visible text,
+   * href wrapped through l.facebook.com/l.php), one wrapping the visible account name (direct
+   * instagram.com/facebook.com href). Prefers the one with text, and among candidates prefers a
+   * direct (non-wrapped) href -- falls back to whatever's available either way. */
+  function findProfileLink(): HTMLAnchorElement | null {
+    const candidates = [...document.querySelectorAll<HTMLAnchorElement>('a[role="link"]')].filter((a) => {
+      const label = a.getAttribute("aria-label") ?? "";
+      return label.startsWith("View ") && label.endsWith("'s profile");
+    });
+    const withText = candidates.filter((a) => cleanText(a.textContent).length > 0);
+    const pool = withText.length > 0 ? withText : candidates;
+    return pool.find((a) => !a.href.includes("l.facebook.com/l.php")) ?? pool[0] ?? null;
+  }
+
+  /** Matches a plain "18,496 followers" / "9,986,455 views" text node — confirmed DOM shape for
+   * both. `unit` is "followers" or "views"; both singular and plural are accepted for robustness
+   * even though only the plural form has been seen live. */
+  function findLabeledCount(unit: "followers" | "views"): number | null {
+    const re = new RegExp(`^([\\d,.]+)\\s+${unit}?s?$`, "i");
+    for (const el of document.querySelectorAll<HTMLElement>("span")) {
+      const match = re.exec(cleanText(el.textContent));
+      if (match) return parseCount(match[1]);
+    }
+    return null;
+  }
+
+  /** Match ID/Video ID card ("More details") and match-duration/reference-file details ("Your
+   * protected content") weren't in the DOM sample this was built from — only the video-player and
+   * account/link card were. Match ID and Video ID are attempted via readLabeledValue() anyway,
+   * betting that Meta reused the same internal label/value component for that "More details" card
+   * (the label text is identical to legacy Rights Manager's) -- unconfirmed, so treated as
+   * best-effort: null rather than a hard failure if the bet is wrong. Match duration and reference
+   * files aren't attempted at all rather than guess blindly; add them once that section's DOM is
+   * available.
+   *
+   * "Date detected" is used as postedAt since there's no other date on this page to use — but it's
+   * a materially different thing (when Meta found the match, not when the infringing content was
+   * posted). Flagged here so it isn't mistaken for a scraping bug later. */
+  function mapMatchFromContentProtection(): CollectMatchResult {
+    const seePost = findSeePostLink();
+    if (!seePost?.href) return { ok: false, error: 'Couldn\'t find a "See post" link on this match.' };
+    const infringingUrl = stripFbclid(unwrapFacebookRedirect(seePost.href));
+
+    const profileLink = findProfileLink();
+    const infringerProfileUrl = profileLink?.href ? stripFbclid(unwrapFacebookRedirect(profileLink.href)) : null;
+    const infringerName = profileLink ? cleanText(profileLink.textContent) : "";
+
+    const matchId = readLabeledValue("Match ID");
+    if (!matchId) return { ok: false, error: 'Couldn\'t find a "Match ID" on this page — make sure a match\'s details are open.' };
+
+    const dateDetectedText = readLabeledValue("Date detected");
+    const parsedDate = dateDetectedText ? new Date(dateDetectedText) : null;
+    const postedAt = parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate.toISOString() : null;
+    if (!postedAt) return { ok: false, error: 'Couldn\'t find/parse a "Date detected" value on this page.' };
+
+    const match: CapturedMatch = {
+      metaMatchId: matchId,
+      metaVideoId: readLabeledValue("Video ID"),
+      infringerName: infringerName || "Unknown",
+      infringingUrl,
+      platform: detectPlatformFromUrl(infringingUrl),
+      postedAt,
+      notes: "",
+      matchDurationSec: null, // "Your protected content" section not yet scraped — see comment above
+      videoViewCount: findLabeledCount("views"),
+      pageFollowerCount: findLabeledCount("followers"),
+      isAccountPrivate: null,
+      infringerProfileUrl,
+      referenceFiles: [], // "Your protected content" section not yet scraped — see comment above
+      videoAvailable: null,
+    };
+    return { ok: true, match };
   }
 
   function mapReferenceFiles(raw: RawCopyrightMatch): CapturedReferenceFile[] {
@@ -213,6 +338,11 @@ if (location.pathname.includes("/rights_manager/")) {
   }
 
   function collectCurrentMatch(): CollectMatchResult {
+    // Checked first and unconditionally -- Content Protection's detection is content-based and
+    // unambiguous, so this never touches the legacy path below (WX Chasing's pages will never
+    // match isContentProtectionMatchPage() and fall straight through, exactly as before).
+    if (isContentProtectionMatchPage()) return mapMatchFromContentProtection();
+
     const matchId = readLabeledValue("Match ID");
     if (!matchId) {
       return { ok: false, error: "Couldn't find a \"Match ID\" label on this page — make sure a match is open." };
@@ -241,6 +371,10 @@ if (location.pathname.includes("/rights_manager/")) {
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === COLLECT_CURRENT_MATCH_MESSAGE) {
       sendResponse(collectCurrentMatch());
+    } else if (message?.type === DETECT_RIGHTS_MANAGER_PAGE_MESSAGE) {
+      const kind = detectPageKind();
+      const result: DetectRightsManagerPageResult = { recognized: kind !== null, kind };
+      sendResponse(result);
     }
   });
 }
