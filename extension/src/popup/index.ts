@@ -6,6 +6,7 @@ import {
   COLLECT_CURRENT_MATCH_MESSAGE,
   DETECT_RIGHTS_MANAGER_PAGE_MESSAGE,
   isRightsManagerHost,
+  QUICK_CAPTURE_AND_SEND_MESSAGE,
   type CapturedMatch,
   type CollectMatchResult,
   type DetectRightsManagerPageResult,
@@ -130,9 +131,10 @@ function isRightsManagerHostTab(url: string | undefined): boolean {
 async function detectRightsManagerTab(tab: chrome.tabs.Tab | undefined): Promise<boolean> {
   if (!isRightsManagerHostTab(tab?.url) || tab?.id === undefined) return false;
   try {
-    const result = (await chrome.tabs.sendMessage(tab.id, { type: DETECT_RIGHTS_MANAGER_PAGE_MESSAGE })) as
-      | DetectRightsManagerPageResult
-      | undefined;
+    // Timeout-guarded (see sendMessageWithTimeout's comment below) for the same reason as the
+    // Facebook post-scan poll -- this call sits inside facebookPollTick()'s own try/finally too,
+    // so a hang here would freeze all future polling just as badly.
+    const result = await sendMessageWithTimeout<DetectRightsManagerPageResult>(tab.id, { type: DETECT_RIGHTS_MANAGER_PAGE_MESSAGE });
     return result?.recognized ?? false;
   } catch {
     return false; // content script not ready yet (e.g. page still loading) — retried next poll tick
@@ -527,6 +529,21 @@ async function scanActiveTab(): Promise<void> {
   render();
 }
 
+/** chrome.tabs.sendMessage has no built-in timeout -- if a content script's handler for a given
+ * message ever fails to call sendResponse (hangs instead of erroring, e.g. on a page shape it
+ * wasn't built for), the returned promise waits forever. That's not just a failed one-off call:
+ * facebookPollTick() below awaits calls like this directly inside its own try/finally, so a hang
+ * here means that finally never runs either, leaving facebookPollInFlight stuck true
+ * PERMANENTLY -- silently freezing all future polling (including Rights Manager page detection)
+ * until the side panel is closed and reopened. Race against a timeout so a hung content script can
+ * never do that again, for any reason, not just the one this was found from. */
+function sendMessageWithTimeout<T>(tabId: number, message: unknown, timeoutMs = 4000): Promise<T | undefined> {
+  return Promise.race([
+    chrome.tabs.sendMessage(tabId, message) as Promise<T | undefined>,
+    new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), timeoutMs)),
+  ]);
+}
+
 /** Facebook has no Scan button — the content script accumulates videos continuously as you scroll
  * (see content/facebook.ts), and this quietly pulls whatever it's found so far into the review
  * list on a timer, the same merge scanActiveTab() does for a manual scan on every other platform,
@@ -535,7 +552,7 @@ async function scanActiveTab(): Promise<void> {
  * changed. */
 async function pollFacebookTab(tabId: number): Promise<boolean> {
   try {
-    const result = (await chrome.tabs.sendMessage(tabId, { type: SCAN_MESSAGE })) as ScanResult | undefined;
+    const result = await sendMessageWithTimeout<ScanResult>(tabId, { type: SCAN_MESSAGE });
     if (!result || !Array.isArray(result.videos)) return false;
 
     let added = 0;
@@ -566,7 +583,12 @@ async function facebookPollTick(): Promise<void> {
     const tab = await refreshActiveTabInfo();
     let changed = state.tabPlatform !== previousPlatform || state.isRightsManager !== previousIsRightsManager;
 
-    if (state.tabPlatform === "facebook" && tab?.id) {
+    // Skip the post-scan poll on a page already recognized as Rights Manager -- scanning for
+    // posts there is meaningless (it's a match-review page, not a profile feed) and was sending
+    // SCAN_MESSAGE into content-facebook.js, a content script never built to handle this page
+    // shape (confirmed live: business.facebook.com/web.facebook.com/www.facebook.com Content
+    // Protection pages all satisfy state.tabPlatform === "facebook" too, since that's host-based).
+    if (state.tabPlatform === "facebook" && !state.isRightsManager && tab?.id) {
       changed = (await pollFacebookTab(tab.id)) || changed;
     }
     // Side panel stays open across navigation — switching onto a Rights Manager tab without ever
@@ -621,48 +643,56 @@ async function sendSelected(): Promise<void> {
   state.error = null;
   render();
 
-  let succeeded = 0;
-  let duplicates = 0;
-  let failed = 0;
+  // Wrapped in try/finally (wasn't before) -- state.busy is the same flag facebookPollTick() checks
+  // before doing anything at all, including Rights Manager page detection. An uncaught exception
+  // anywhere below (updateConfig failing, a storage quota error, anything) used to leave it stuck
+  // true forever, silently freezing all future polling right alongside the sendMessage-hang bug
+  // fixed above -- same symptom ("has to refresh to trigger it"), different cause.
+  try {
+    let succeeded = 0;
+    let duplicates = 0;
+    let failed = 0;
 
-  for (const video of toSend) {
-    const input: ExtensionVideoImportInput = {
-      clientId: account.clientId,
-      socialAccountId: account.id,
-      platform: account.platform,
-      videoUrl: video.videoUrl,
-      publicationDate: video.publicationDate,
-      caption: video.caption || null,
-      viewCount: video.viewCount ?? undefined,
-      thumbnailUrl: video.thumbnailUrl ?? undefined,
-      youtubeCategory: video.youtubeCategory,
-    };
-    try {
-      const result = await extensionApi.importVideo({ apiBaseUrl: state.apiBaseUrl, apiToken: state.apiToken }, input);
-      state.scannedVideos.delete(video.key);
-      state.selectedKeys.delete(video.key);
-      state.existingVideoUrls.add(video.videoUrl);
-      if (result.duplicate) duplicates += 1;
-      else succeeded += 1;
-    } catch {
-      failed += 1;
+    for (const video of toSend) {
+      const input: ExtensionVideoImportInput = {
+        clientId: account.clientId,
+        socialAccountId: account.id,
+        platform: account.platform,
+        videoUrl: video.videoUrl,
+        publicationDate: video.publicationDate,
+        caption: video.caption || null,
+        viewCount: video.viewCount ?? undefined,
+        thumbnailUrl: video.thumbnailUrl ?? undefined,
+        youtubeCategory: video.youtubeCategory,
+      };
+      try {
+        const result = await extensionApi.importVideo({ apiBaseUrl: state.apiBaseUrl, apiToken: state.apiToken }, input);
+        state.scannedVideos.delete(video.key);
+        state.selectedKeys.delete(video.key);
+        state.existingVideoUrls.add(video.videoUrl);
+        if (result.duplicate) duplicates += 1;
+        else succeeded += 1;
+      } catch {
+        failed += 1;
+      }
     }
+
+    if (succeeded + duplicates > 0) {
+      const idx = state.socialAccounts.findIndex((a) => a.id === account.id);
+      if (idx >= 0) state.socialAccounts[idx] = { ...state.socialAccounts[idx], lastPullAt: new Date().toISOString() };
+    }
+
+    await updateConfig({ lastClientId: state.selectedClientId, lastSocialAccountId: state.selectedSocialAccountId });
+    persistSession();
+
+    state.status =
+      `Sent ${succeeded} new video${succeeded === 1 ? "" : "s"}` +
+      (duplicates > 0 ? `, ${duplicates} already imported (skipped)` : "") +
+      (failed > 0 ? `. ${failed} failed — still listed below, safe to retry.` : ".");
+  } finally {
+    state.busy = false;
+    render();
   }
-
-  if (succeeded + duplicates > 0) {
-    const idx = state.socialAccounts.findIndex((a) => a.id === account.id);
-    if (idx >= 0) state.socialAccounts[idx] = { ...state.socialAccounts[idx], lastPullAt: new Date().toISOString() };
-  }
-
-  await updateConfig({ lastClientId: state.selectedClientId, lastSocialAccountId: state.selectedSocialAccountId });
-  persistSession();
-
-  state.busy = false;
-  state.status =
-    `Sent ${succeeded} new video${succeeded === 1 ? "" : "s"}` +
-    (duplicates > 0 ? `, ${duplicates} already imported (skipped)` : "") +
-    (failed > 0 ? `. ${failed} failed — still listed below, safe to retry.` : ".");
-  render();
 }
 
 /** Ported from the old standalone tool's captureFullPage, with two bugs fixed: (1) setZoom is
@@ -883,6 +913,35 @@ async function sendCapturedMatch(): Promise<void> {
   } finally {
     state.busy = false;
     render();
+  }
+}
+
+/** Triggered by the Ctrl+Shift+F keyboard shortcut (background/index.ts relays it here) —
+ * captures the current match and sends it immediately, no review step. By design: this is a
+ * deliberate speed-over-safety tradeoff the user asked for, not an oversight. Fields that
+ * collectCurrentMatch() below the review card normally lets someone glance at before sending go
+ * out exactly as scraped -- infringerName may be "Unknown", videoAvailable is always still unset.
+ * Reuses collectCurrentMatch()/sendCapturedMatch() as-is rather than a separate code path, so this
+ * can never drift from what manually capturing-then-sending actually does. */
+async function quickCaptureAndSend(): Promise<void> {
+  if (state.busy || state.capturingMatch) return; // already mid-flight — the shortcut fired twice
+  if (!state.isRightsManager) {
+    state.matchError = "This page isn't a recognized Rights Manager match — open a specific match's details first.";
+    render();
+    return;
+  }
+  if (!state.selectedRightsManagerAccountId) {
+    state.matchError = "Choose a Rights Manager account first.";
+    render();
+    return;
+  }
+  await collectCurrentMatch();
+  // Only proceed if the capture itself actually succeeded -- state.capturedMatch is set on a
+  // successful result.ok capture regardless of whether the screenshot step separately failed (that
+  // failure is optional and already reflected as a non-blocking matchError on its own), so this is
+  // the right thing to check, not "matchError is empty".
+  if (state.capturedMatch) {
+    await sendCapturedMatch();
   }
 }
 
@@ -1398,5 +1457,14 @@ function render(): void {
   }
   appRoot.appendChild(renderMainView());
 }
+
+// Relayed from background/index.ts's chrome.commands.onCommand listener for the Ctrl+Shift+F
+// quick-capture shortcut. No sendResponse call -- background only awaits chrome.runtime.
+// sendMessage() far enough to confirm a listener is present (its retry loop), not for a result.
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type === QUICK_CAPTURE_AND_SEND_MESSAGE) {
+    void quickCaptureAndSend();
+  }
+});
 
 void init();

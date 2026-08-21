@@ -5,6 +5,14 @@ export const RIGHTS_MANAGER_MATCHES_SOURCE = "viral-drm-rights-manager-matches";
 
 export const COLLECT_CURRENT_MATCH_MESSAGE = "viral-drm-collect-current-match";
 
+/** Broadcast from background/index.ts's chrome.commands.onCommand listener to the side panel when
+ * the quick-capture keyboard shortcut fires -- captures the current match and sends it
+ * immediately, with no review step. Deliberately no review by design choice (speed over always
+ * requiring a manual check): fields that would normally get a human glance before sending --
+ * infringerName ("Unknown" if not found), videoAvailable (always starts unset) -- go out
+ * uncorrected when triggered this way. */
+export const QUICK_CAPTURE_AND_SEND_MESSAGE = "viral-drm-quick-capture-and-send";
+
 /** Whether a hostname is one Meta could plausibly serve a match-review interface from. Three
  * confirmed live so far, all genuinely different hostnames, not aliases of each other:
  * business.facebook.com (Business Manager, classic Rights Manager, WX Chasing), web.facebook.com,

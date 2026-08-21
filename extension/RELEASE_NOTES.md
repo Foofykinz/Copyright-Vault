@@ -1,10 +1,6 @@
-- Fixed Content Protection not detecting on www.facebook.com — a third distinct hostname Meta serves it from, in addition to business.facebook.com and web.facebook.com already supported. Rather than keep adding hostnames one report at a time, the extension now activates on any facebook.com subdomain, so a new one shouldn't require another update
-- Fixed Content Protection potentially never detecting a match on a non-English Facebook interface — the infringing post link is now also matched by its destination URL shape, not just its exact English text
-- Fixed screenshots not zooming out enough to capture the whole page — tries 50%, then 35%, then 25%, stopping at the first zoom a page actually fits into
-- New: the match review card now shows the captured infringing link before you send
-- Fixed Content Protection reference file titles picking up extra/wrong text
+- New: Ctrl+Shift+F (Cmd+Shift+F on Mac) captures and sends the current Rights Manager match instantly — no review step. This is faster on purpose, not an oversight: anything that normally gets a manual check before sending (infringer name, which sometimes comes through as "Unknown"; Video Available, which always starts unset) goes out exactly as scraped. Use the regular "Capture this match" button instead when you want to check/edit first
+- Fixed a real cause of the extension sometimes needing a manual refresh to start detecting a Rights Manager page again: a background check could get stuck waiting forever on a page it wasn't built for, silently freezing all future detection until the side panel was closed and reopened. Fixed two ways — stopped that unrelated check from running at all on a page already recognized as Rights Manager, and added a timeout so a stuck check can't freeze everything again for any reason
 - New: Content Protection captures now include reference file names
-- Fixed Content Protection captures failing to find Match ID/Video ID/Date detected
 - New: capture matches from Meta's newer Content Protection interface alongside the classic Rights Manager interface (WX Chasing, unchanged)
-- Fixed match screenshots failing with a permissions error
 - New: mark whether the infringing video is still available while reviewing a captured match
+- New: the match review card now shows the captured infringing link before you send
