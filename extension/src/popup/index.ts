@@ -748,6 +748,19 @@ async function captureFullPageScreenshot(tabId: number, windowId: number): Promi
   await chrome.tabs.setZoom(tabId, 1);
 
   try {
+    // Pause any playing video before capturing -- confirmed live: a match's video panel is
+    // position: sticky (stays in the same on-screen spot regardless of scroll, which the trimming
+    // below is built to detect and skip on repeat) BUT was still playing, so its own pixels kept
+    // changing between captures (0:05 -> 0:06 in one reported screenshot) -- measureStickyRows
+    // correctly-but-wrongly read that as "this changed, it must be new content" and drew it again.
+    // A static, unmoving frame is exactly what the comparison needs to recognize it as sticky.
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        for (const video of document.querySelectorAll("video")) video.pause();
+      },
+    });
+
     type StepResult = { scrollTop: number; scrollHeight: number; cropLeft: number; cropTop: number; cropWidth: number; cropHeight: number; devicePixelRatio: number };
 
     // Each chrome.scripting.executeScript() call below re-declares its own copy of

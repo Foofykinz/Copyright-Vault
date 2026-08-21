@@ -1,4 +1,5 @@
-- Fixed the top of the screenshot showing the Facebook nav bar and video panel repeated, and the bottom getting cut off before the actual end of the page. The repeat was caused by sticky page elements (they stay in the same on-screen position while you scroll, so they got captured fresh in every slice); now each new slice is compared against the last one and only the genuinely new part gets drawn. The cutoff was from measuring the page's height only once, before scrolling had revealed all of it; now it's re-measured at every step
+- Fixed the video panel still showing repeated in screenshots (the nav bar fix from last version worked — this was narrower: the video was still playing during capture, so its changing frames tricked the "is this the same as last time" check into thinking it was new content each time instead of the same sticky panel). Now pauses any video before capturing starts
+- Fixed the top of the screenshot showing sticky elements repeated, and the bottom getting cut off before the actual end of the page
 - New: Ctrl+Shift+F (Cmd+Shift+F on Mac) captures and sends the current Rights Manager match instantly — no review step, by design
 - Fixed a real cause of the extension sometimes needing a manual refresh to start detecting a Rights Manager page again
 - New: Content Protection captures now include reference file names
