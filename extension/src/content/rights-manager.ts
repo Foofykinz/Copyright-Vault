@@ -91,27 +91,25 @@ if (RIGHTS_MANAGER_HOSTS.has(location.hostname.replace(/^www\./, ""))) {
     return location.pathname.includes("/rights_manager/");
   }
 
+  /** Confirmed live URL prefix for Meta's newer Content Protection interface (on web.facebook.com,
+   * reached from a Page's Professional Dashboard) -- covers both the overview/list page and an
+   * individual match's detail page, which share this same path. */
+  const CONTENT_PROTECTION_PATH = "/professional_dashboard/content/content_protection";
+
   /** Meta's newer Content Protection interface — confirmed live on the "Severe Studios" account,
    * replacing classic Rights Manager for it (WX Chasing is still on the classic interface; this is
-   * per-account, not a platform-wide cutover as of this writing). No confirmed URL pattern to gate
-   * on, so detected by the page's own heading text instead, per the actual screenshot: a
-   * "Content protection" section containing a "Match details" page.
+   * per-account, not a platform-wide cutover as of this writing).
    *
-   * Deliberately requires both strings to be the EXACT, complete text of a heading-role element,
-   * not merely present anywhere in the page (an earlier version used document.body.innerText,
-   * which is exactly the kind of false-positive risk that must not happen here — Business
-   * Manager's nav chrome very plausibly says "Content protection" somewhere on every page
-   * regardless of which tool is open, and legacy Rights Manager likely has its own "Match details"
-   * heading too. A false positive would route a WX Chasing capture through this file's DOM-only
-   * Content Protection parser instead of the working legacy path -- exactly what must never
-   * happen. Heading-exact-match is meaningfully safer, though still not proven against a real
-   * legacy Rights Manager page's actual heading text -- if WX Chasing captures ever end up
-   * routed here, that's the next thing to check.) */
+   * An earlier version detected this by guessed heading text ("Content protection" + "Match
+   * details" as exact heading-role element text) — that never actually matched live, which is why
+   * this silently failed to activate at all once someone opened a real match (only the
+   * overview/list page and a screenshot were ever seen; the header markup itself was never
+   * confirmed from real DOM). Replaced with something grounded only in what's actually confirmed:
+   * the live URL prefix, plus the "See post" link that IS confirmed present on an individual
+   * match's page (from Karam's real DOM sample) and should NOT be present on the overview/list
+   * page, which just lists matches rather than showing one's full detail card. */
   function isContentProtectionMatchPage(): boolean {
-    const headingTexts = [...document.querySelectorAll<HTMLElement>('div[role="heading"], h1, h2')].map((el) =>
-      cleanText(el.textContent)
-    );
-    return headingTexts.includes("Match details") && headingTexts.includes("Content protection");
+    return location.pathname.includes(CONTENT_PROTECTION_PATH) && findSeePostLink() !== null;
   }
 
   function detectPageKind(): RightsManagerPageKind | null {
