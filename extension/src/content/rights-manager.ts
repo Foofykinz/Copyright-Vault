@@ -92,11 +92,24 @@ if (location.hostname.replace(/^www\./, "") === "business.facebook.com") {
   /** Meta's newer Content Protection interface — confirmed live on the "Severe Studios" account,
    * replacing classic Rights Manager for it (WX Chasing is still on the classic interface; this is
    * per-account, not a platform-wide cutover as of this writing). No confirmed URL pattern to gate
-   * on, so detected by the page's own visible heading text instead, per the actual screenshot: a
-   * "Content protection" section containing a "Match details" page. */
+   * on, so detected by the page's own heading text instead, per the actual screenshot: a
+   * "Content protection" section containing a "Match details" page.
+   *
+   * Deliberately requires both strings to be the EXACT, complete text of a heading-role element,
+   * not merely present anywhere in the page (an earlier version used document.body.innerText,
+   * which is exactly the kind of false-positive risk that must not happen here — Business
+   * Manager's nav chrome very plausibly says "Content protection" somewhere on every page
+   * regardless of which tool is open, and legacy Rights Manager likely has its own "Match details"
+   * heading too. A false positive would route a WX Chasing capture through this file's DOM-only
+   * Content Protection parser instead of the working legacy path -- exactly what must never
+   * happen. Heading-exact-match is meaningfully safer, though still not proven against a real
+   * legacy Rights Manager page's actual heading text -- if WX Chasing captures ever end up
+   * routed here, that's the next thing to check.) */
   function isContentProtectionMatchPage(): boolean {
-    const text = document.body.innerText;
-    return text.includes("Content protection") && text.includes("Match details");
+    const headingTexts = [...document.querySelectorAll<HTMLElement>('div[role="heading"], h1, h2')].map((el) =>
+      cleanText(el.textContent)
+    );
+    return headingTexts.includes("Match details") && headingTexts.includes("Content protection");
   }
 
   function detectPageKind(): RightsManagerPageKind | null {
@@ -338,10 +351,14 @@ if (location.hostname.replace(/^www\./, "") === "business.facebook.com") {
   }
 
   function collectCurrentMatch(): CollectMatchResult {
-    // Checked first and unconditionally -- Content Protection's detection is content-based and
-    // unambiguous, so this never touches the legacy path below (WX Chasing's pages will never
-    // match isContentProtectionMatchPage() and fall straight through, exactly as before).
-    if (isContentProtectionMatchPage()) return mapMatchFromContentProtection();
+    // Logged unconditionally, every capture, not just the failure case below -- the fastest way to
+    // tell "which path produced this?" apart is a routing trace, not reasoning about it after the
+    // fact. Whoever's testing can open DevTools' console on business.facebook.com and see exactly
+    // what fired.
+    if (isContentProtectionMatchPage()) {
+      console.info("[viral-drm] Rights Manager match capture: routed to Content Protection parser.");
+      return mapMatchFromContentProtection();
+    }
 
     const matchId = readLabeledValue("Match ID");
     if (!matchId) {
@@ -349,14 +366,17 @@ if (location.hostname.replace(/^www\./, "") === "business.facebook.com") {
     }
 
     const raw = capturedMatchesById.get(matchId) ?? capturedMatchesByVideoId.get(matchId) ?? capturedMatchesByCopyrightId.get(matchId);
-    if (!raw) {
+    if (raw) {
+      console.info("[viral-drm] Rights Manager match capture: routed to legacy network-matched parser.", { displayedMatchId: matchId });
+    } else {
       // Falling back to the weaker DOM-only path (no infringer name/views/followers/reference
-      // files, platform guessed from the link). Whether the page-displayed "Match ID" actually
-      // corresponds to any of the three candidate id fields on the network-captured records is
-      // still unconfirmed (see the map declarations above) -- this is the evidence needed to
-      // settle it next time it happens. Open DevTools' console on business.facebook.com to see it.
+      // files, platform guessed from the link) -- infringerName ends up hardcoded "Unknown" here,
+      // which is very plausibly what "the name isn't populating" reports about. Whether the
+      // page-displayed "Match ID" actually corresponds to any of the three candidate id fields on
+      // the network-captured records is still unconfirmed (see the map declarations above) -- this
+      // is the evidence needed to settle it.
       console.warn(
-        "[viral-drm] Rights Manager match capture: no network-captured record matched the page's Match ID.",
+        "[viral-drm] Rights Manager match capture: routed to legacy DOM-only fallback -- no network-captured record matched the page's Match ID.",
         {
           displayedMatchId: matchId,
           knownActiveMatchDataIds: [...capturedMatchesById.keys()],
