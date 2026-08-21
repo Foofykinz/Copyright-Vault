@@ -1,10 +1,9 @@
-- New: Content Protection captures now include reference file names (the "Your protected content" matched asset(s)) — previously always empty
-- Increased the screenshot's zoom-out from 50% to 25% (Chrome's floor) so more of a tall page fits per shot — if a Content Protection screenshot is still getting cut off after this, it likely means the missing content sits in its own independently-scrolling panel rather than the whole page, which needs a different fix — let me know if it's still incomplete
-- Fixed Content Protection captures failing to find Match ID/Video ID/Date detected — confirmed real DOM shape, different from the legacy interface's
+- Fixed the screenshot zoom-out being way too aggressive (25%) and producing a distorted/unusable image — capped back at 50%
+- New: Content Protection captures now include reference file names (the "Your protected content" matched asset(s)) — title text may still be incomplete on some matches, being tightened up
+- Fixed Content Protection captures failing to find Match ID/Video ID/Date detected
 - Fixed Content Protection never actually activating on an individual match's page at all
 - Fixed Content Protection not activating on web.facebook.com/professional_dashboard/ — different host than Business Manager
 - Added a console log on every capture showing exactly which parser handled it — check DevTools' console for a line starting with "[viral-drm]" if something still looks off
 - New: capture matches from Meta's newer Content Protection interface alongside the classic Rights Manager interface (WX Chasing, unchanged)
-- Fixed the infringing link sometimes coming through as a raw Facebook redirect wrapper instead of the real URL
 - Fixed match screenshots failing with a permissions error
 - New: mark whether the infringing video is still available while reviewing a captured match
