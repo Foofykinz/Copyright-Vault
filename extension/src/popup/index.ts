@@ -681,9 +681,19 @@ async function sendSelected(): Promise<void> {
  * contents of url..." on the executeScript calls; without "<all_urls>" specifically, captureVisibleTab
  * separately throws "Either the '<all_urls>' or 'activeTab' permission is required." See
  * manifest.json's host_permissions. */
+// 0.25 is Chrome's practical floor for chrome.tabs.setZoom (matches the browser's own zoom UI's
+// lowest preset, "25%") -- zoomed out as far as it goes, not just to 0.5, so more of a tall page
+// fits in each captured slice and fewer scroll-stitch steps below are needed to cover the rest.
+// Reported: Content Protection's match-details screenshot was cut off, not capturing the whole
+// page. Note this only helps content whose layout responds to a larger effective viewport (e.g. a
+// viewport-relative-height panel) -- it does nothing for a genuinely fixed-pixel-height inner
+// scroll container, which needs its own scroll position moved, not just more zoom. If screenshots
+// are still incomplete after this, that's the next thing to look at.
+const SCREENSHOT_ZOOM = 0.25;
+
 async function captureFullPageScreenshot(tabId: number, windowId: number): Promise<string> {
   const originalZoom = await chrome.tabs.getZoom(tabId);
-  await chrome.tabs.setZoom(tabId, 0.5);
+  await chrome.tabs.setZoom(tabId, SCREENSHOT_ZOOM);
 
   try {
     const [{ result: dims }] = await chrome.scripting.executeScript({

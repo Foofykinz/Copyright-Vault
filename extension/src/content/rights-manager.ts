@@ -240,9 +240,38 @@ if (RIGHTS_MANAGER_HOSTS.has(location.hostname.replace(/^www\./, ""))) {
     return null;
   }
 
-  /** Match duration and reference-file details ("Your protected content" section) weren't in any
-   * DOM sample this was built from -- not attempted rather than guessed blindly; add them once
-   * that section's DOM is available.
+  /** "Your protected content" reference asset(s) — confirmed DOM: each is a link to
+   * /content_protection/protection_details/?asset_id=<id>, which conveniently hands over the id
+   * directly rather than needing to scrape it from somewhere else. The card's title text wasn't
+   * fully captured in the DOM sample this was built from (it was cut off after the thumbnail
+   * image), so the title is taken as the anchor's full visible text with the trailing
+   * "<duration>s, <percent>% of the protected content" line (confirmed from the match-details
+   * screenshot) stripped off the end — best-effort, not confirmed against the title's own markup.
+   * A match can carry more than one reference asset, so every matching link is collected, deduped
+   * by id in case the same asset is linked more than once in the card. */
+  function findReferenceFiles(): CapturedReferenceFile[] {
+    const seen = new Set<string>();
+    const files: CapturedReferenceFile[] = [];
+    for (const a of document.querySelectorAll<HTMLAnchorElement>('a[href*="/content_protection/protection_details/"]')) {
+      let id: string | null;
+      try {
+        id = new URL(a.href, location.origin).searchParams.get("asset_id");
+      } catch {
+        id = null;
+      }
+      if (!id || seen.has(id)) continue;
+      const rawTitle = cleanText(a.textContent);
+      const title = rawTitle.replace(/\d+(\.\d+)?s,\s*\d+%\s*of the protected content.*$/i, "").trim() || rawTitle;
+      if (!title) continue;
+      seen.add(id);
+      files.push({ id, title });
+    }
+    return files;
+  }
+
+  /** Match duration (the "32s" line, distinct from the trailing text findReferenceFiles() strips
+   * off of each reference asset's title) still isn't scraped — the DOM sample never isolated that
+   * value on its own, only ever seen concatenated onto a reference asset's title text.
    *
    * "Date detected" is used as postedAt since there's no other date on this page to use — but it's
    * a materially different thing (when Meta found the match, not when the infringing content was
@@ -272,12 +301,12 @@ if (RIGHTS_MANAGER_HOSTS.has(location.hostname.replace(/^www\./, ""))) {
       platform: detectPlatformFromUrl(infringingUrl),
       postedAt,
       notes: "",
-      matchDurationSec: null, // "Your protected content" section not yet scraped — see comment above
+      matchDurationSec: null, // not yet scraped — see comment above
       videoViewCount: findLabeledCount("views"),
       pageFollowerCount: findLabeledCount("followers"),
       isAccountPrivate: null,
       infringerProfileUrl,
-      referenceFiles: [], // "Your protected content" section not yet scraped — see comment above
+      referenceFiles: findReferenceFiles(),
       videoAvailable: null,
     };
     return { ok: true, match };

@@ -1,4 +1,6 @@
-- Fixed Content Protection captures failing to find Match ID/Video ID/Date detected — that section of the page uses a completely different label/value structure than legacy Rights Manager (confirmed from real DOM this time, not guessed), and the old reader was never going to find anything there
+- New: Content Protection captures now include reference file names (the "Your protected content" matched asset(s)) — previously always empty
+- Increased the screenshot's zoom-out from 50% to 25% (Chrome's floor) so more of a tall page fits per shot — if a Content Protection screenshot is still getting cut off after this, it likely means the missing content sits in its own independently-scrolling panel rather than the whole page, which needs a different fix — let me know if it's still incomplete
+- Fixed Content Protection captures failing to find Match ID/Video ID/Date detected — confirmed real DOM shape, different from the legacy interface's
 - Fixed Content Protection never actually activating on an individual match's page at all
 - Fixed Content Protection not activating on web.facebook.com/professional_dashboard/ — different host than Business Manager
 - Added a console log on every capture showing exactly which parser handled it — check DevTools' console for a line starting with "[viral-drm]" if something still looks off
