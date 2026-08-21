@@ -761,56 +761,80 @@ async function captureFullPageScreenshot(tabId: number, windowId: number): Promi
       },
     });
 
-    type StepResult = { scrollTop: number; scrollHeight: number; cropLeft: number; cropTop: number; cropWidth: number; cropHeight: number; devicePixelRatio: number };
+    type CropInfo = { cropLeft: number; cropTop: number; cropWidth: number; cropHeight: number; devicePixelRatio: number };
+    type StepResult = { scrollTop: number; scrollHeight: number };
 
-    // Each chrome.scripting.executeScript() call below re-declares its own copy of
-    // findScrollContainer() -- functions passed to that API must be fully self-contained (no
-    // closures over anything outside the function body). Finds the element with the largest
-    // scroll overflow (scrollHeight - clientHeight, and actually laid out -- clientHeight > 0)
-    // among anything with overflow-y: auto/scroll, falling back to the page's own scrolling
-    // element when nothing else overflows.
-    function scrollAndMeasure(y: number): StepResult {
-      function findScrollContainer(): Element {
-        let best: Element = document.scrollingElement || document.documentElement;
-        let bestOverflow = best.scrollHeight - best.clientHeight;
-        for (const el of document.querySelectorAll<HTMLElement>("*")) {
-          if (el.clientHeight === 0) continue;
-          const style = getComputedStyle(el);
-          if (!/(auto|scroll)/.test(style.overflowY)) continue;
-          const overflow = el.scrollHeight - el.clientHeight;
-          if (overflow > bestOverflow) {
-            best = el;
-            bestOverflow = overflow;
+    // findScrollContainer() previously re-ran its whole "find the biggest overflow" heuristic fresh
+    // on every single chrome.scripting.executeScript() call (each is a separate, memoryless script
+    // injection). If content loads in as the page is scrolled -- confirmed true, that's why
+    // scrollHeight gets re-measured every step below -- it's possible a DIFFERENT element becomes
+    // "the biggest overflow" partway through, meaning later steps could measure/scroll/crop a
+    // different container than the first one did. That alone would misalign the pixel comparison
+    // for every slice, not just the video. Fixed by finding the container once and stamping it
+    // with a marker attribute, so every later call finds that exact same element directly instead
+    // of re-guessing -- one fixed identity, one fixed crop rect, used for the whole capture.
+    const SCROLL_MARKER = "data-viral-drm-scroll-target";
+
+    const [{ result: initial }] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (marker: string) => {
+        function findScrollContainer(): Element {
+          let best: Element = document.scrollingElement || document.documentElement;
+          let bestOverflow = best.scrollHeight - best.clientHeight;
+          for (const el of document.querySelectorAll<HTMLElement>("*")) {
+            if (el.clientHeight === 0) continue;
+            const style = getComputedStyle(el);
+            if (!/(auto|scroll)/.test(style.overflowY)) continue;
+            const overflow = el.scrollHeight - el.clientHeight;
+            if (overflow > bestOverflow) {
+              best = el;
+              bestOverflow = overflow;
+            }
           }
+          return best;
         }
-        return best;
-      }
-      const container = findScrollContainer();
+        const container = findScrollContainer();
+        container.setAttribute(marker, "true");
+        const rect = container.getBoundingClientRect();
+        return {
+          scrollTop: container.scrollTop,
+          scrollHeight: container.scrollHeight,
+          cropLeft: Math.max(0, rect.left),
+          cropTop: Math.max(0, rect.top),
+          cropWidth: Math.min(rect.width, window.innerWidth),
+          cropHeight: Math.min(rect.height, window.innerHeight),
+          devicePixelRatio: window.devicePixelRatio || 1,
+        };
+      },
+      args: [SCROLL_MARKER],
+    });
+    const crop = initial as CropInfo & StepResult;
+    console.info("[viral-drm] screenshot: crop bounds", crop);
+
+    // Every later step scrolls the SAME marked element and re-measures only scrollTop/scrollHeight
+    // (which genuinely can change as content loads) -- deliberately not the crop rect, which stays
+    // fixed at what was measured above so every slice is cropped identically and lines up for
+    // comparison.
+    function scrollMarkedContainer(marker: string, y: number): StepResult {
+      const container = document.querySelector(`[${marker}]`) ?? document.scrollingElement ?? document.documentElement;
       container.scrollTo(0, y);
-      const rect = container.getBoundingClientRect();
-      return {
-        scrollTop: container.scrollTop,
-        scrollHeight: container.scrollHeight,
-        cropLeft: Math.max(0, rect.left),
-        cropTop: Math.max(0, rect.top),
-        cropWidth: Math.min(rect.width, window.innerWidth),
-        cropHeight: Math.min(rect.height, window.innerHeight),
-        devicePixelRatio: window.devicePixelRatio || 1,
-      };
+      return { scrollTop: (container as HTMLElement).scrollTop, scrollHeight: container.scrollHeight };
     }
 
-    const screenshots: { step: StepResult; dataUrl: string }[] = [];
+    const screenshots: { dataUrl: string }[] = [];
     let requestedY = 0;
     let lastScrollTop = -1;
+    let scrollHeight = crop.scrollHeight;
 
     for (;;) {
       const [{ result }] = await chrome.scripting.executeScript({
         target: { tabId },
-        func: scrollAndMeasure,
-        args: [requestedY],
+        func: scrollMarkedContainer,
+        args: [SCROLL_MARKER, requestedY],
       });
       const step = result as StepResult;
       if (step.scrollTop === lastScrollTop) break; // no further scroll room — already captured this position
+      scrollHeight = step.scrollHeight;
 
       // A short pause before capturing -- otherwise captureVisibleTab can grab a frame from just
       // before the scroll (or a re-render it triggered) has actually finished painting. Longer on
@@ -819,30 +843,33 @@ async function captureFullPageScreenshot(tabId: number, windowId: number): Promi
       await new Promise((resolve) => setTimeout(resolve, screenshots.length === 0 ? 400 : 200));
 
       const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
-      screenshots.push({ step, dataUrl });
+      screenshots.push({ dataUrl });
       lastScrollTop = step.scrollTop;
 
-      if (step.scrollTop + step.cropHeight >= step.scrollHeight) break; // just captured the bottom
-      requestedY += step.cropHeight;
+      if (step.scrollTop + crop.cropHeight >= step.scrollHeight) break; // just captured the bottom
+      requestedY += crop.cropHeight;
     }
+    console.info("[viral-drm] screenshot: captured", { slices: screenshots.length, finalScrollHeight: scrollHeight });
 
     // Load every slice and extract its cropped region as ImageData up front -- needed both for the
-    // sticky-row comparison below and for the final draw, via one reusable offscreen canvas per
-    // slice's own crop size (crop bounds can shift slightly between slices as content loads in).
+    // sticky-row comparison below and for the final draw, via one reusable offscreen canvas sized
+    // to the single shared crop rect -- every slice uses the exact same bounds now, so they're
+    // guaranteed pixel-aligned for comparison (the previous per-slice re-measurement was the bug
+    // fixed above).
+    const dpr = crop.devicePixelRatio;
+    const srcX = Math.round(crop.cropLeft * dpr);
+    const srcY = Math.round(crop.cropTop * dpr);
+    const srcW = Math.round(crop.cropWidth * dpr);
+    const srcH = Math.round(crop.cropHeight * dpr);
     const sampleCanvas = document.createElement("canvas");
+    sampleCanvas.width = srcW;
+    sampleCanvas.height = srcH;
     const sampleCtx = sampleCanvas.getContext("2d")!;
     const regions = await Promise.all(
-      screenshots.map(async ({ step, dataUrl }) => {
+      screenshots.map(async ({ dataUrl }) => {
         const img = new Image();
         img.src = dataUrl;
         await new Promise<void>((resolve) => (img.onload = () => resolve()));
-        const dpr = step.devicePixelRatio;
-        const srcX = Math.round(step.cropLeft * dpr);
-        const srcY = Math.round(step.cropTop * dpr);
-        const srcW = Math.round(step.cropWidth * dpr);
-        const srcH = Math.round(step.cropHeight * dpr);
-        sampleCanvas.width = srcW;
-        sampleCanvas.height = srcH;
         sampleCtx.clearRect(0, 0, srcW, srcH);
         sampleCtx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
         return { width: srcW, height: srcH, data: sampleCtx.getImageData(0, 0, srcW, srcH) };
