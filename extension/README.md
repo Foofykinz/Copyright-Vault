@@ -1,7 +1,8 @@
 # Viral DRM Collector (browser extension)
 
-Collects a client's own videos from TikTok, X, Facebook, and Instagram and sends them to the Viral
-DRM web app. This is the piece the web app's "Pull recent videos" button was waiting on.
+Collects a client's own videos from TikTok, X, Facebook, Instagram, Threads, YouTube, and Vimeo and
+sends them to the Viral DRM web app. This is the piece the web app's "Pull recent videos" button was
+waiting on.
 
 ## What it does and doesn't do
 
@@ -53,6 +54,21 @@ DRM web app. This is the piece the web app's "Pull recent videos" button was wai
   carousel contains more than one video, only the first one sent will actually get stored (the
   rest will look like duplicates of it to the dedup check). **Refresh the Instagram tab after
   installing/updating the extension**, same reason as TikTok/Facebook.
+- **Threads**: same technique and search-the-whole-response approach as Instagram (Threads is built
+  on Instagram's web stack, and post objects share Instagram's exact schema — `media_type`,
+  `taken_at`, `video_versions`, `image_versions2`, `code`), against `/graphql/query` on
+  `threads.com`. Two differences from Instagram's endpoint, confirmed via live capture: every
+  response body is prefixed with `for (;;);` before the JSON (stripped before parsing), and a
+  profile query's connection nodes are one level deeper — `edge.node.thread_items[].post` rather
+  than the post directly — which gets unwrapped in `content/threads-network.ts` before relaying on.
+  Gives real caption and publish date. **No view count** — Threads doesn't expose one publicly on
+  posts at all (confirmed via live capture: no view/play count field anywhere on the post, and none
+  shown in the UI), so `viewCount` is always `null`, with no follow-up lookup the way Instagram has
+  one. A profile's query response is confirmed to mix the profile owner's own posts together with
+  *other* users' replies to those posts in the same result — each captured post's own `user.username`
+  is checked against the profile currently open, same author-check discipline as every other
+  platform. **Refresh the Threads tab after installing/updating the extension**, same reason as
+  TikTok/Facebook/Instagram.
 - **YouTube**: unlike every other platform, this isn't scraped from a page at all — it's a pure
   server-side call to the official YouTube Data API (`channels.list` → `playlistItems.list` →
   `videos.list`), triggered by selecting a client's YouTube account and clicking "Scan channel",
@@ -66,6 +82,12 @@ DRM web app. This is the piece the web app's "Pull recent videos" button was wai
   upload; the scan summary's "Classification" line says so explicitly rather than claiming a
   complete split it can't back up. Requires a `YOUTUBE_API_KEY` Worker secret (same one used by the
   web app's manual "Add Video" metadata autofill).
+- **Vimeo**: also server-side rather than scraped, same reason and same trigger as YouTube —
+  select a client's Vimeo account and click "Scan channel". Calls the official Vimeo API
+  (`users/<id>/videos`) directly, no page needed. View count only shows up if the video's owner has
+  "Show number of plays" enabled in their own Vimeo privacy settings — that's Vimeo's choice, not
+  something this can control, so it's `null` for videos where it's off. Requires a
+  `VIMEO_ACCESS_TOKEN` Worker secret (Public scope Personal Access Token).
 - Nothing is sent automatically. Every scan populates a review list with checkboxes — you pick
   what actually gets sent.
 - The UI is a **side panel**, not a popup — it stays open and docked while you scroll and interact
@@ -110,7 +132,7 @@ DRM web app. This is the piece the web app's "Pull recent videos" button was wai
 ## Using it
 
 1. Open a client's TikTok profile (`tiktok.com/@handle`), X profile (`x.com/handle`), Facebook
-   page/profile, or Instagram profile.
+   page/profile, Instagram profile, or Threads profile (`threads.com/@handle`).
 2. Click the extension icon to open the side panel (or it may already be open from before — it
    stays docked across page navigation). Pick the Client and Social Account (auto-filtered to the
    matching platform when possible).
@@ -122,8 +144,8 @@ DRM web app. This is the piece the web app's "Pull recent videos" button was wai
 5. Click "Send N selected". Sent videos disappear from the list; anything that failed stays so you
    can retry.
 6. Scroll down to load more of the profile's history before sending if you want the whole thing in
-   one pass. On TikTok, Facebook, and Instagram that means scan again after scrolling; on X,
-   capture happens continuously in the background, so you can scroll straight through and scan
+   one pass. On TikTok, Facebook, Instagram, and Threads that means scan again after scrolling; on
+   X, capture happens continuously in the background, so you can scroll straight through and scan
    once at the end. The side panel stays open while you scroll, unlike a popup would.
 
 ## Rebuilding after changes
@@ -169,5 +191,7 @@ script. If a scan stops finding videos, that's the most likely reason; the parsi
 `src/content/tiktok.ts`, `src/content/x.ts`, `src/content/facebook-network.ts` (Facebook's
 `timeline_list_feed_units` response shape), `src/content/facebook.ts`,
 `src/content/instagram-network.ts` (Instagram's `xdt_api__v1__feed__user_timeline_graphql_connection`
-response shape), and `src/content/instagram.ts` will need updating to match whatever the platform
-looks like at that point.
+response shape), `src/content/instagram.ts`, `src/content/threads-network.ts` (Threads'
+`/graphql/query` response shape, including the `for (;;);` prefix and `thread_items[].post` nesting),
+and `src/content/threads.ts` will need updating to match whatever the platform looks like at that
+point.

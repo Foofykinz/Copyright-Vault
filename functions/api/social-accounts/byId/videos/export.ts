@@ -4,7 +4,7 @@ import { getSocialAccountOrThrow } from "../../../../lib/db";
 import { nowIso } from "../../../../lib/ids";
 import { PLATFORM_LABELS, type Platform } from "../../../../../shared/types";
 import { sanitizeForFilename } from "../../../../../shared/format";
-import { centralDateString, todayDateString } from "../../../../../shared/dates";
+import { addCalendarDays, centralDateString, REGISTRATION_WINDOW_DAYS, todayDateString } from "../../../../../shared/dates";
 
 function csvField(value: string): string {
   if (/[",\r\n]/.test(value)) {
@@ -13,7 +13,22 @@ function csvField(value: string): string {
   return value;
 }
 
-const CSV_HEADER = ["Client Name", "Platform", "Live", "Post URL", "Post Title", "Description", "Views", "Date Posted"];
+// "Short" and "Registration Deadline" are appended at the end rather than inserted alongside "Live"
+// -- Squeeze's importer already consumes this export (see the export's own doc comment below), and
+// adding new columns after the existing ones is the lower-risk change for anything reading this
+// positionally rather than by header name.
+const CSV_HEADER = [
+  "Client Name",
+  "Platform",
+  "Live",
+  "Post URL",
+  "Post Title",
+  "Description",
+  "Views",
+  "Date Posted",
+  "Short",
+  "Registration Deadline",
+];
 
 interface ExportRow {
   client_name: string;
@@ -67,10 +82,12 @@ export const onRequestGet: ApiHandler = async (context) => {
 
     const lines = [CSV_HEADER.map(csvField).join(",")];
     for (const row of rows.results) {
-      // "Live" is only ever known for YouTube (the only platform this app classifies as
-      // Short/Live/Upload) — left blank rather than a false "No" for every other platform, which
-      // has no live/non-live detection at all.
+      // "Live" and "Short" are only ever known for YouTube (the only platform this app classifies
+      // as Short/Live/Upload) — left blank rather than a false "No" for every other platform, which
+      // has no live/short detection at all.
       const live = row.youtube_category === null ? "" : row.youtube_category === "live" ? "Yes" : "No";
+      const short = row.youtube_category === null ? "" : row.youtube_category === "short" ? "Yes" : "No";
+      const registrationDeadline = addCalendarDays(row.publication_date, REGISTRATION_WINDOW_DAYS);
       lines.push(
         [
           csvField(row.client_name),
@@ -81,6 +98,8 @@ export const onRequestGet: ApiHandler = async (context) => {
           csvField(""),
           csvField(String(row.view_count)),
           csvField(centralDateString(row.publication_date)),
+          csvField(short),
+          csvField(registrationDeadline),
         ].join(",")
       );
     }

@@ -1,6 +1,6 @@
-export type Platform = "facebook" | "instagram" | "tiktok" | "youtube" | "vimeo" | "x" | "other";
+export type Platform = "facebook" | "instagram" | "tiktok" | "youtube" | "vimeo" | "x" | "threads" | "other";
 
-export const PLATFORMS: Platform[] = ["facebook", "instagram", "tiktok", "youtube", "vimeo", "x", "other"];
+export const PLATFORMS: Platform[] = ["facebook", "instagram", "tiktok", "youtube", "vimeo", "x", "threads", "other"];
 
 export const PLATFORM_LABELS: Record<Platform, string> = {
   facebook: "Facebook",
@@ -9,6 +9,7 @@ export const PLATFORM_LABELS: Record<Platform, string> = {
   youtube: "YouTube",
   vimeo: "Vimeo",
   x: "X",
+  threads: "Threads",
   other: "Other",
 };
 

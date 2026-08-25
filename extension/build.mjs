@@ -36,6 +36,8 @@ const iifeEntryPoints = {
   "content-facebook-network": path.join(dirname, "src/content/facebook-network.ts"),
   "content-instagram": path.join(dirname, "src/content/instagram.ts"),
   "content-instagram-network": path.join(dirname, "src/content/instagram-network.ts"),
+  "content-threads": path.join(dirname, "src/content/threads.ts"),
+  "content-threads-network": path.join(dirname, "src/content/threads-network.ts"),
   "content-rights-manager": path.join(dirname, "src/content/rights-manager.ts"),
   "content-rights-manager-network": path.join(dirname, "src/content/rights-manager-network.ts"),
 };

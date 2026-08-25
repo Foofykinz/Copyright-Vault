@@ -156,6 +156,7 @@ function detectTabPlatform(url: string | undefined): Platform | null {
     if (host === "x.com" || host === "twitter.com") return "x";
     if (host === "facebook.com") return "facebook";
     if (host === "instagram.com") return "instagram";
+    if (host === "threads.com") return "threads";
   } catch {
     return null;
   }
@@ -1369,7 +1370,8 @@ function renderMainView(): HTMLElement {
     state.tabPlatform === "tiktok" ||
     state.tabPlatform === "x" ||
     state.tabPlatform === "facebook" ||
-    state.tabPlatform === "instagram"
+    state.tabPlatform === "instagram" ||
+    state.tabPlatform === "threads"
   ) {
     container.appendChild(el("div", { className: "hint", textContent: `Detected platform: ${PLATFORM_LABELS[state.tabPlatform]}` }));
   } else {
@@ -1377,7 +1379,7 @@ function renderMainView(): HTMLElement {
       el("div", {
         className: "hint",
         textContent:
-          "Navigate to a TikTok, X, Facebook, or Instagram profile to scan for videos — or select a YouTube or Vimeo channel below (no page needed).",
+          "Navigate to a TikTok, X, Facebook, Instagram, or Threads profile to scan for videos — or select a YouTube or Vimeo channel below (no page needed).",
       })
     );
   }
