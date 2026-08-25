@@ -33,6 +33,7 @@ import * as extensionVideos from "../functions/api/extension/videos";
 import * as extensionInfringementReports from "../functions/api/extension/infringement-reports";
 import * as metadataLookup from "../functions/api/metadata/index";
 import * as youtubeChannelVideos from "../functions/api/youtube/channel-videos";
+import * as vimeoChannelVideos from "../functions/api/vimeo/channel-videos";
 
 export interface Env extends ApiEnv {
   ASSETS: Fetcher;
@@ -88,12 +89,18 @@ register("/api/extension/videos", extensionVideos);
 register("/api/extension/infringement-reports", extensionInfringementReports);
 register("/api/metadata", metadataLookup);
 register("/api/youtube/channel-videos", youtubeChannelVideos);
+register("/api/vimeo/channel-videos", vimeoChannelVideos);
 
 // Routes reachable without a staff login: /api/auth/* handles its own auth (login has none by
 // nature; logout/session/change-password each call verifySession internally), and the extension
 // routes authenticate machine-to-machine via requireBearerToken instead of a browser session.
 const SESSION_EXEMPT_PREFIXES = ["/api/auth/"];
-const SESSION_EXEMPT_EXACT = ["/api/extension/videos", "/api/extension/infringement-reports", "/api/youtube/channel-videos"];
+const SESSION_EXEMPT_EXACT = [
+  "/api/extension/videos",
+  "/api/extension/infringement-reports",
+  "/api/youtube/channel-videos",
+  "/api/vimeo/channel-videos",
+];
 
 function isSessionExempt(pathname: string): boolean {
   return SESSION_EXEMPT_EXACT.includes(pathname) || SESSION_EXEMPT_PREFIXES.some((p) => pathname.startsWith(p));

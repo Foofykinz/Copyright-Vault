@@ -7,6 +7,8 @@ import type {
   RightsManagerAccount,
   SocialAccount,
   VideoWithDeadline,
+  VimeoChannelVideosRequest,
+  VimeoChannelVideosResponse,
   YouTubeChannelVideosRequest,
   YouTubeChannelVideosResponse,
 } from "../../../shared/types";
@@ -45,6 +47,11 @@ export const extensionApi = {
     }),
   scanYouTubeChannel: (config: ExtensionConfig, input: YouTubeChannelVideosRequest) =>
     request<YouTubeChannelVideosResponse>(config, "/api/youtube/channel-videos", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  scanVimeoChannel: (config: ExtensionConfig, input: VimeoChannelVideosRequest) =>
+    request<VimeoChannelVideosResponse>(config, "/api/vimeo/channel-videos", {
       method: "POST",
       body: JSON.stringify(input),
     }),

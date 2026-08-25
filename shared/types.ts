@@ -1,12 +1,13 @@
-export type Platform = "facebook" | "instagram" | "tiktok" | "youtube" | "x" | "other";
+export type Platform = "facebook" | "instagram" | "tiktok" | "youtube" | "vimeo" | "x" | "other";
 
-export const PLATFORMS: Platform[] = ["facebook", "instagram", "tiktok", "youtube", "x", "other"];
+export const PLATFORMS: Platform[] = ["facebook", "instagram", "tiktok", "youtube", "vimeo", "x", "other"];
 
 export const PLATFORM_LABELS: Record<Platform, string> = {
   facebook: "Facebook",
   instagram: "Instagram",
   tiktok: "TikTok",
   youtube: "YouTube",
+  vimeo: "Vimeo",
   x: "X",
   other: "Other",
 };
@@ -61,6 +62,10 @@ export interface SocialAccount {
   youtubeChannelId?: string | null;
   youtubeUploadsPlaylistId?: string | null;
   youtubeHandle?: string | null;
+  /** Vimeo only — cached numeric user ID after the first successful resolution, so later scans
+   * don't need to re-resolve the profile URL. Null for every other platform, and null for a Vimeo
+   * account that hasn't been scanned yet. */
+  vimeoUserId?: string | null;
 }
 
 export type YouTubeCategory = "short" | "live" | "upload";
@@ -505,4 +510,34 @@ export interface YouTubeChannelVideosResponse {
   videos: YouTubeScannedVideo[];
   counts: { shorts: number; lives: number; uploads: number };
   classificationStatus: YouTubeClassificationStatus;
+}
+
+// ---- Vimeo channel scan (POST /api/vimeo/channel-videos) ----
+
+export interface VimeoChannelVideosRequest {
+  clientId: string;
+  accountId: string;
+  /** A vimeo.com profile URL to resolve. Omitted once the account already has a cached vimeoUserId. */
+  channelUrl?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface VimeoScannedVideo {
+  videoId: string;
+  videoUrl: string;
+  title: string;
+  caption: string;
+  publicationDate: string;
+  /** Null when the video owner hasn't enabled public play counts in their Vimeo privacy settings —
+   * not every Vimeo video exposes this. */
+  viewCount: number | null;
+  thumbnailUrl: string | null;
+  channelTitle: string;
+  durationSeconds: number | null;
+}
+
+export interface VimeoChannelVideosResponse {
+  channel: { userId: string; title: string };
+  videos: VimeoScannedVideo[];
 }

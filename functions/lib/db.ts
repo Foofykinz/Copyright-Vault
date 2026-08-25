@@ -42,6 +42,7 @@ interface SocialAccountRow {
   youtube_channel_id?: string | null;
   youtube_uploads_playlist_id?: string | null;
   youtube_handle?: string | null;
+  vimeo_user_id?: string | null;
 }
 
 interface VideoRow {
@@ -140,6 +141,7 @@ export function mapSocialAccount(row: SocialAccountRow): SocialAccount {
     youtubeChannelId: row.youtube_channel_id ?? null,
     youtubeUploadsPlaylistId: row.youtube_uploads_playlist_id ?? null,
     youtubeHandle: row.youtube_handle ?? null,
+    vimeoUserId: row.vimeo_user_id ?? null,
   };
 }
 

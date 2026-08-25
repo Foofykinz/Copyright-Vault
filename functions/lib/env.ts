@@ -7,6 +7,8 @@ export interface Env {
   EXTENSION_API_TOKEN?: string;
   /** Optional YouTube Data API v3 key. Without it, YouTube metadata lookup is unavailable. */
   YOUTUBE_API_KEY?: string;
+  /** Optional Vimeo API personal access token (Public scope). Without it, Vimeo channel scanning is unavailable. */
+  VIMEO_ACCESS_TOKEN?: string;
   /** Key used to sign staff login session cookies. Session verification fails closed without it —
    * nobody can be authenticated, rather than trusting an unsigned cookie. */
   SESSION_SECRET?: string;

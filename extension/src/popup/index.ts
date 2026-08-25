@@ -38,6 +38,13 @@ const YOUTUBE_CLASSIFICATION_LABELS: Record<YouTubeClassificationStatus, string>
   shorts_lookup_failed: "Shorts lookup failed; some Shorts may appear under Regular Uploads",
 };
 
+/** YouTube and Vimeo both scan server-side by account rather than by scraping whatever tab is
+ * active — every tab-URL-based check (platform mismatch, profile-URL mismatch) is meaningless for
+ * either and must be skipped the same way for both. */
+function isAccountDrivenPlatform(platform: Platform): boolean {
+  return platform === "youtube" || platform === "vimeo";
+}
+
 const app = document.getElementById("app");
 if (!app) throw new Error("Popup root element not found.");
 const appRoot: HTMLElement = app;
@@ -439,6 +446,61 @@ async function scanYouTubeAccount(account: SocialAccount): Promise<void> {
   render();
 }
 
+/** Vimeo, like YouTube, has no page for a content script to scrape — retrieval is entirely
+ * server-side via the official Vimeo API, so this scan is account-driven rather than tab-driven. */
+async function scanVimeoAccount(account: SocialAccount): Promise<void> {
+  const startDate = state.dateMode === "range" ? state.rangeStart || undefined : account.lastPullAt ? centralDateString(account.lastPullAt) : undefined;
+  const endDate = state.dateMode === "range" ? state.rangeEnd || undefined : undefined;
+
+  try {
+    const response = await extensionApi.scanVimeoChannel(
+      { apiBaseUrl: state.apiBaseUrl, apiToken: state.apiToken },
+      {
+        clientId: account.clientId,
+        accountId: account.id,
+        channelUrl: account.profileUrl ?? undefined,
+        startDate,
+        endDate,
+      }
+    );
+
+    let added = 0;
+    let skippedDuplicates = 0;
+    for (const v of response.videos) {
+      const key = `vimeo:${v.videoId}`;
+      if (state.existingVideoUrls.has(v.videoUrl)) {
+        skippedDuplicates += 1;
+        continue;
+      }
+      if (!state.scannedVideos.has(key)) added += 1;
+      state.scannedVideos.set(key, {
+        key,
+        videoUrl: v.videoUrl,
+        publicationDate: v.publicationDate,
+        caption: v.caption,
+        viewCount: v.viewCount,
+        title: v.title,
+        thumbnailUrl: v.thumbnailUrl,
+        channelTitle: v.channelTitle,
+        durationSeconds: v.durationSeconds,
+      });
+      state.selectedKeys.add(key);
+    }
+
+    state.youtubeScan = null; // Vimeo has no Shorts/Live/Upload split to summarize — this is YouTube-only.
+    persistSession();
+
+    const visibleCount = visibleVideos().length;
+    state.status =
+      `Scan found ${response.videos.length} video${response.videos.length === 1 ? "" : "s"}` +
+      (skippedDuplicates > 0 ? `, ${skippedDuplicates} already imported (skipped)` : "") +
+      `. ${added} new this scan; ${visibleCount} shown under the current date filter.`;
+  } catch (err) {
+    state.error = err instanceof Error ? err.message : "Vimeo scan failed.";
+  }
+  render();
+}
+
 /** Re-reads the active tab and updates tabPlatform/tabUrl accordingly — shared by the manual scan
  * flow and the background Facebook poll so both agree on what "the current page" means. */
 async function refreshActiveTabInfo(): Promise<chrome.tabs.Tab | undefined> {
@@ -457,6 +519,10 @@ async function scanActiveTab(): Promise<void> {
   const selectedAccount = state.socialAccounts.find((a) => a.id === state.selectedSocialAccountId);
   if (selectedAccount?.platform === "youtube") {
     await scanYouTubeAccount(selectedAccount);
+    return;
+  }
+  if (selectedAccount?.platform === "vimeo") {
+    await scanVimeoAccount(selectedAccount);
     return;
   }
 
@@ -618,15 +684,15 @@ async function sendSelected(): Promise<void> {
   // platform/socialAccountId sent to the server come entirely from this selection, never from the
   // scan result itself. A platform-type mismatch here is never correct, unlike the softer
   // client-mismatch check below which allows a deliberate override.
-  // Both checks are tab-URL-based and don't apply to YouTube, which is scanned by account, not by
-  // whatever tab happens to be active.
-  if (account.platform !== "youtube" && state.tabPlatform && account.platform !== state.tabPlatform) {
+  // Both checks are tab-URL-based and don't apply to YouTube/Vimeo, which are scanned by account,
+  // not by whatever tab happens to be active.
+  if (!isAccountDrivenPlatform(account.platform) && state.tabPlatform && account.platform !== state.tabPlatform) {
     state.error = `Selected account is ${PLATFORM_LABELS[account.platform]}, but this page is ${PLATFORM_LABELS[state.tabPlatform]}. Choose an account of the matching platform before sending.`;
     render();
     return;
   }
 
-  if (account.platform !== "youtube" && profileLooksMismatched(account.profileUrl, state.tabUrl) && !state.mismatchAcknowledged) {
+  if (!isAccountDrivenPlatform(account.platform) && profileLooksMismatched(account.profileUrl, state.tabUrl) && !state.mismatchAcknowledged) {
     state.error = "This page doesn't look like it matches the selected social account. Check the box above to confirm before sending.";
     render();
     return;
@@ -723,9 +789,9 @@ async function sendSelected(): Promise<void> {
 //
 // Tries zoom levels from most-readable to least and stops at the first one a page actually fits
 // into in ~1 shot -- 0.25 is the last resort and is what's confirmed to fully capture Content
-// Protection's page; 0.5/0.35 are tried first so a page that doesn't need to zoom out that far
-// gets a more readable screenshot automatically.
-const ZOOM_CANDIDATES = [0.5, 0.35, 0.25];
+// Protection's page; 0.65/0.5/0.35 are tried first so a page that doesn't need to zoom out that far
+// gets a more readable, less-blurry-when-zoomed-in screenshot automatically.
+const ZOOM_CANDIDATES = [0.65, 0.5, 0.35, 0.25];
 
 // Each chrome.scripting.executeScript() call below re-declares its own copy of a
 // findScrollContainer() helper -- functions passed to that API must be fully self-contained (no
@@ -1311,7 +1377,7 @@ function renderMainView(): HTMLElement {
       el("div", {
         className: "hint",
         textContent:
-          "Navigate to a TikTok, X, Facebook, or Instagram profile to scan for videos — or select a YouTube channel below (no page needed).",
+          "Navigate to a TikTok, X, Facebook, or Instagram profile to scan for videos — or select a YouTube or Vimeo channel below (no page needed).",
       })
     );
   }
@@ -1337,11 +1403,11 @@ function renderMainView(): HTMLElement {
     });
   });
 
-  // YouTube accounts are always shown alongside whatever matches the active tab — scanning them
-  // never depends on which tab is focused, so they shouldn't be hidden just because an unrelated
-  // (or no) tab-matched platform happens to be active.
+  // YouTube/Vimeo accounts are always shown alongside whatever matches the active tab — scanning
+  // them never depends on which tab is focused, so they shouldn't be hidden just because an
+  // unrelated (or no) tab-matched platform happens to be active.
   const filteredAccounts = state.tabPlatform
-    ? state.socialAccounts.filter((a) => a.platform === state.tabPlatform || a.platform === "youtube")
+    ? state.socialAccounts.filter((a) => a.platform === state.tabPlatform || isAccountDrivenPlatform(a.platform))
     : state.socialAccounts;
   const accountsToShow = filteredAccounts.length > 0 ? filteredAccounts : state.socialAccounts;
 
@@ -1375,9 +1441,9 @@ function renderMainView(): HTMLElement {
   }
 
   const selectedAccount = state.socialAccounts.find((a) => a.id === state.selectedSocialAccountId) ?? null;
-  // Tab-vs-account matching is meaningless for YouTube — it's scanned by account, not by page.
+  // Tab-vs-account matching is meaningless for YouTube/Vimeo — they're scanned by account, not by page.
   const platformMismatch = Boolean(
-    selectedAccount && selectedAccount.platform !== "youtube" && state.tabPlatform && selectedAccount.platform !== state.tabPlatform
+    selectedAccount && !isAccountDrivenPlatform(selectedAccount.platform) && state.tabPlatform && selectedAccount.platform !== state.tabPlatform
   );
   const platformMismatchWarning = platformMismatch
     ? el("div", {
@@ -1386,7 +1452,7 @@ function renderMainView(): HTMLElement {
       })
     : null;
   const mismatchWarning =
-    selectedAccount && selectedAccount.platform !== "youtube" && profileLooksMismatched(selectedAccount.profileUrl, state.tabUrl)
+    selectedAccount && !isAccountDrivenPlatform(selectedAccount.platform) && profileLooksMismatched(selectedAccount.profileUrl, state.tabUrl)
       ? (() => {
           const checkbox = el("input", { type: "checkbox", checked: state.mismatchAcknowledged });
           checkbox.addEventListener("change", () => {
@@ -1400,13 +1466,13 @@ function renderMainView(): HTMLElement {
         })()
       : null;
 
-  const isYoutubeAccount = selectedAccount?.platform === "youtube";
+  const isAccountDrivenAccount = Boolean(selectedAccount && isAccountDrivenPlatform(selectedAccount.platform));
   // Facebook has no Scan button — facebookPollTick() populates the list automatically as you
   // scroll (see content/facebook.ts), so a manual scan trigger would just be redundant.
-  const isFacebookPage = !isYoutubeAccount && state.tabPlatform === "facebook";
+  const isFacebookPage = !isAccountDrivenAccount && state.tabPlatform === "facebook";
   let scanBtn: HTMLButtonElement | null = null;
   if (!isFacebookPage) {
-    scanBtn = el("button", { textContent: isYoutubeAccount ? "Scan channel" : "Scan this page" });
+    scanBtn = el("button", { textContent: isAccountDrivenAccount ? "Scan channel" : "Scan this page" });
     scanBtn.addEventListener("click", () => void scanActiveTab());
   }
 
