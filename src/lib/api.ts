@@ -13,6 +13,7 @@ import type {
   CreateVideoInput,
   DashboardStats,
   DeadlineVideo,
+  HuntSourceResult,
   InfringementReportListParams,
   InfringementReportListResult,
   InfringementReportWithNames,
@@ -170,5 +171,10 @@ export const api = {
     list: () => request<{ rightsManagerAccounts: RightsManagerAccount[] }>("/rights-manager-accounts"),
     getOrCreate: (input: CreateRightsManagerAccountInput) =>
       post<{ rightsManagerAccount: RightsManagerAccount }>("/rights-manager-accounts", input),
+  },
+  hunter: {
+    /** HUNT THIS SOURCE NOW — private, requires hunterAccess (enforced server-side regardless of
+     * what the frontend shows). See functions/api/hunter/sources/byId/hunt.ts. */
+    hunt: (videoId: string) => post<HuntSourceResult>(`/hunter/sources/${videoId}/hunt`, {}),
   },
 };

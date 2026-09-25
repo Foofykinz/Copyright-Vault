@@ -1,7 +1,15 @@
-import { PLATFORMS, type Platform, type YouTubeCategory } from "../../shared/types";
+import {
+  PLATFORMS,
+  type HunterChannelClassification,
+  type HunterSearchPriority,
+  type Platform,
+  type YouTubeCategory,
+} from "../../shared/types";
 import { ValidationError } from "./http";
 
 const YOUTUBE_CATEGORIES: YouTubeCategory[] = ["short", "live", "upload"];
+const HUNTER_SEARCH_PRIORITIES: HunterSearchPriority[] = ["high", "medium", "low"];
+const HUNTER_CHANNEL_CLASSIFICATIONS: HunterChannelClassification[] = ["ALLOWLIST", "WATCHLIST", "REPEAT_OFFENDER"];
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$/;
 
@@ -91,6 +99,30 @@ export function optionalYoutubeCategory(value: unknown): YouTubeCategory | null 
     });
   }
   return value as YouTubeCategory;
+}
+
+export function optionalHunterSearchPriority(value: unknown): HunterSearchPriority | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string" || !HUNTER_SEARCH_PRIORITIES.includes(value as HunterSearchPriority)) {
+    throw new ValidationError(`searchPriority must be one of: ${HUNTER_SEARCH_PRIORITIES.join(", ")}.`, {
+      searchPriority: "invalid",
+    });
+  }
+  return value as HunterSearchPriority;
+}
+
+export function requireHunterChannelClassification(value: unknown): HunterChannelClassification {
+  if (typeof value !== "string" || !HUNTER_CHANNEL_CLASSIFICATIONS.includes(value as HunterChannelClassification)) {
+    throw new ValidationError(`classification must be one of: ${HUNTER_CHANNEL_CLASSIFICATIONS.join(", ")}.`, {
+      classification: "invalid",
+    });
+  }
+  return value as HunterChannelClassification;
+}
+
+export function optionalHunterChannelClassification(value: unknown): HunterChannelClassification | null {
+  if (value === undefined || value === null || value === "") return null;
+  return requireHunterChannelClassification(value);
 }
 
 export function requireStringArray(value: unknown, field: string): string[] {

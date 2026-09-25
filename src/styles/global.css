@@ -961,6 +961,66 @@ select.badge {
   margin-bottom: 12px;
 }
 
+/* ---- Vault Hunter (private, Phase 2 beta) ---- */
+
+.hunter-results {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.hunter-diagnostics summary {
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.hunter-diagnostics-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.hunter-candidate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hunter-candidate-card {
+  display: flex;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.hunter-candidate-suppressed {
+  opacity: 0.7;
+}
+
+.hunter-candidate-thumb {
+  width: 120px;
+  height: 68px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: var(--surface);
+}
+
+.hunter-candidate-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.hunter-reasons {
+  margin: 6px 0 8px;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 /* ---- Utility ---- */
 
 .text-secondary {

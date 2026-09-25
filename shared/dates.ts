@@ -1,4 +1,4 @@
-import type { DeadlineStatus } from "./types";
+import type { DeadlineStatus, HunterChronology } from "./types";
 
 export const REGISTRATION_WINDOW_DAYS = 90;
 const MS_PER_DAY = 86_400_000;
@@ -92,6 +92,25 @@ export function computeDeadline(publicationDateIso: string, now: Date = new Date
   const registrationDeadline = addCalendarDays(publicationDateIso, REGISTRATION_WINDOW_DAYS);
   const daysRemaining = daysBetween(todayDateString(now), registrationDeadline);
   return { registrationDeadline, daysRemaining, status: deadlineStatusFromDays(daysRemaining) };
+}
+
+/** Vault Hunter's chronology signal for one candidate against its source — never used to discard a
+ * candidate (a "before source" candidate may still be a real reuse if the source date itself is
+ * unreliable), only to explain and rank it. Either date missing/unparseable is reported as
+ * "unknown" rather than guessed at. */
+export function chronologyFromDates(
+  sourceDateIso: string | null | undefined,
+  candidateDateIso: string | null | undefined
+): { chronology: HunterChronology; daysFromSource: number | null } {
+  if (!sourceDateIso || !candidateDateIso) return { chronology: "unknown", daysFromSource: null };
+  let days: number;
+  try {
+    days = daysBetween(sourceDateIso, candidateDateIso);
+  } catch {
+    return { chronology: "unknown", daysFromSource: null };
+  }
+  if (days === 0) return { chronology: "same_day", daysFromSource: 0 };
+  return { chronology: days > 0 ? "after_source" : "before_source", daysFromSource: days };
 }
 
 /** Earliest of a set of publication dates, or null if the list is empty. */

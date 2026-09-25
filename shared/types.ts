@@ -20,6 +20,10 @@ export interface SessionUser {
   name: string;
   username: string;
   mustChangePassword: boolean;
+  /** Server-enforced on every /api/hunter/* route (see functions/lib/hunterAuth.ts) — this flag is
+   * only here so the frontend can hide Vault Hunter's nav/UI for everyone else. It is never itself
+   * the security boundary. */
+  hunterAccess: boolean;
 }
 
 export interface Client {
@@ -541,4 +545,235 @@ export interface VimeoScannedVideo {
 export interface VimeoChannelVideosResponse {
   channel: { userId: string; title: string };
   videos: VimeoScannedVideo[];
+}
+
+// ---- Vault Hunter (private, /api/hunter/*) ----
+// V1 Phase 1: data foundation only — these types back the schema in migration 0014, plus the
+// settings/channels/quota API foundations. Search execution, ranking, and review-queue UI land in
+// later phases.
+
+export type HunterSearchPriority = "high" | "medium" | "low";
+
+export type HunterSearchStatus = "not_started" | "queued" | "running" | "ok" | "error" | "quota_blocked";
+
+/** One row per eligible Hunter source, keyed off an existing `videos.id` (any platform — not just
+ * YouTube-platform source rows). Absence of a settings row for a video is equivalent to
+ * hunterEnabled: false with every other field at its default; see HunterSourceSettingsResult. */
+export interface HunterSourceSettings {
+  videoId: string;
+  hunterEnabled: boolean;
+  firstSearchedAt: string | null;
+  lastSearchedAt: string | null;
+  /** Populated once the Phase 4 scheduler exists; null under V1's manual-only Hunt flow. */
+  nextSearchAt: string | null;
+  searchPriority: HunterSearchPriority;
+  searchStatus: HunterSearchStatus;
+  lastSearchResultCount: number;
+  productiveSearchCount: number;
+  consecutiveEmptyRuns: number;
+  lastError: string | null;
+  enabledAt: string | null;
+  enabledByUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** GET response for a video with no settings row yet — a default, unsaved-shaped settings object
+ * (isConfigured: false) so the caller can render Hunter's off-state without a prior PATCH. */
+export interface HunterSourceSettingsResult {
+  settings: HunterSourceSettings;
+  isConfigured: boolean;
+}
+
+export interface UpdateHunterSourceSettingsInput {
+  hunterEnabled?: boolean;
+  searchPriority?: HunterSearchPriority;
+}
+
+export type HunterChronology = "after_source" | "same_day" | "before_source" | "unknown";
+
+export type HunterCandidatePriority = "low" | "review" | "high";
+
+export type HunterReviewStatus =
+  | "new"
+  | "reviewing"
+  | "likely_match"
+  | "confirmed_actionable"
+  | "authorized"
+  | "not_a_match"
+  | "watch"
+  | "archived";
+
+/** Deliberately the only fingerprinting-related field on a candidate in V1 — see migration 0014's
+ * comment on hunter_candidates. Future states beyond NOT_RUN are enforced by the DB CHECK so the
+ * column is ready for Phase 6 without another migration, but never populated before then. */
+export type HunterMediaComparisonStatus = "NOT_RUN" | "QUEUED" | "PROCESSING" | "MATCH" | "NO_MATCH" | "ERROR";
+
+/** A YouTube video's globally cached metadata, keyed by YouTube's own video ID — one row regardless
+ * of how many source assets it's a candidate for. */
+export interface HunterYouTubeVideo {
+  youtubeVideoId: string;
+  title: string | null;
+  description: string | null;
+  channelId: string | null;
+  channelTitle: string | null;
+  publishedAt: string | null;
+  viewCount: number | null;
+  thumbnailUrl: string | null;
+  durationSeconds: number | null;
+  videoUrl: string | null;
+  metadataFetchedAt: string;
+}
+
+export interface HunterCandidate {
+  id: string;
+  sourceVideoId: string;
+  clientId: string;
+  youtubeVideoId: string;
+  firstDiscoveredAt: string;
+  lastSeenAt: string;
+  /** Every discovery query that has surfaced this candidate — one signal is "found by multiple
+   * distinct queries." */
+  discoveryQueries: string[];
+  chronology: HunterChronology;
+  priority: HunterCandidatePriority;
+  /** Explainable ranking score for sort order only — never a fake confidence percentage. */
+  priorityScore: number;
+  /** Human-readable reasons behind `priority`, e.g. "exact distinctive phrase match". */
+  priorityReasons: string[];
+  reviewStatus: HunterReviewStatus;
+  reviewerNotes: string | null;
+  reviewedByUserId: string | null;
+  reviewedAt: string | null;
+  mediaComparisonStatus: HunterMediaComparisonStatus;
+  /** Set automatically for two cases: "self_source" covers both the source's own YouTube upload
+   * appearing as a "candidate" of itself AND a different video on a YouTube channel already known to
+   * belong to this source's client (e.g. their own second angle/cut of the same event — see
+   * functions/lib/hunterDb.ts's getClientYoutubeChannelIds); "allowlisted_channel" is a candidate
+   * whose channel is on the allowlist. Null means not suppressed. Discovery history is preserved
+   * either way — see migration 0015. */
+  suppressedReason: "self_source" | "allowlisted_channel" | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A candidate joined with its cached YouTube metadata and freshly computed scoring — the shape
+ * returned by HUNT THIS SOURCE NOW and (later) the review queue. */
+export interface HunterCandidateWithVideo extends HunterCandidate {
+  youtubeVideo: HunterYouTubeVideo;
+  /** True only for candidates newly created by the Hunt that produced this response — false for a
+   * relationship that already existed in D1 and was just updated (last_seen_at, discoveryQueries, …). */
+  newlyDiscovered: boolean;
+}
+
+export interface HunterSearchRun {
+  id: string;
+  sourceVideoId: string | null;
+  query: string;
+  trigger: "manual" | "scheduled";
+  triggeredByUserId: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+  apiResultCount: number | null;
+  uniqueCandidatesCount: number | null;
+  duplicateCount: number | null;
+  error: string | null;
+  createdAt: string;
+}
+
+/** A YouTube channel's Vault Hunter classification — exactly one of the three, never more than one
+ * row per channel (see migration 0014's UNIQUE(youtube_channel_id) + CHECK), so a channel can't
+ * accidentally exist in two contradictory lists at once. Reclassifying is always an explicit PATCH. */
+export type HunterChannelClassification = "ALLOWLIST" | "WATCHLIST" | "REPEAT_OFFENDER";
+
+export interface HunterChannel {
+  id: string;
+  youtubeChannelId: string;
+  channelName: string | null;
+  classification: HunterChannelClassification;
+  associatedClientId: string | null;
+  reason: string | null;
+  notes: string | null;
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
+  confirmedIncidentCount: number;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateHunterChannelInput {
+  youtubeChannelId: string;
+  channelName?: string | null;
+  classification: HunterChannelClassification;
+  associatedClientId?: string | null;
+  reason?: string | null;
+  notes?: string | null;
+}
+
+export interface UpdateHunterChannelInput {
+  channelName?: string | null;
+  classification?: HunterChannelClassification;
+  associatedClientId?: string | null;
+  reason?: string | null;
+  notes?: string | null;
+  confirmedIncidentCount?: number;
+}
+
+// ---- Manual Hunt (POST /api/hunter/sources/:videoId/hunt) ----
+
+export type HunterQueryStrategy = "distinctive_phrase" | "condensed_descriptive" | "event_action_detail" | "client_assisted";
+
+export interface HunterGeneratedQuery {
+  query: string;
+  strategy: HunterQueryStrategy;
+  reason: string;
+}
+
+/** One row of "what did the algorithm actually do" per generated query — the Phase 2 beta
+ * diagnostics requirement. `skippedReason` is set instead of running the query at all when the
+ * Hunter search budget ran out before reaching it. */
+export interface HunterSearchRunDiagnostic {
+  query: string;
+  strategy: HunterQueryStrategy;
+  attempted: boolean;
+  succeeded: boolean;
+  resultCount: number | null;
+  uniqueCandidatesFromThisQuery: number;
+  error: string | null;
+  skippedReason?: "search_budget_exhausted";
+}
+
+export type HuntStatus = "SUCCESS" | "PARTIAL_SUCCESS" | "FAILED";
+
+/** Full response for HUNT THIS SOURCE NOW — deliberately verbose (beta diagnostics) so it's possible
+ * to answer "what did Hunter actually do and why" without reading server logs. */
+export interface HuntSourceResult {
+  status: HuntStatus;
+  /** Set when nothing could run at all, e.g. the search budget was already exhausted before this
+   * Hunt started. Per-query failures are reported in searchRuns/searchSummary instead. */
+  error?: string;
+  source: Video;
+  sourceText: { original: string; normalized: string };
+  generatedQueries: HunterGeneratedQuery[];
+  searchSummary: { attempted: number; completed: number; failed: number; skippedDueToBudget: number };
+  searchRuns: HunterSearchRunDiagnostic[];
+  candidates: HunterCandidateWithVideo[];
+  quota: HunterQuotaStatus;
+}
+
+/** Today's (Central time) YouTube API usage against Vault Hunter's configured search.list budget.
+ * search.list and every other Data API method are tracked as two independent counters — see
+ * migration 0014's hunter_quota_budget comment for why they're no longer one combined pool. */
+export interface HunterQuotaStatus {
+  searchDate: string;
+  searchCallsMade: number;
+  otherApiCallsMade: number;
+  searchCallsBudget: number;
+  apiErrors: number;
+  searchQuotaExhaustedAt: string | null;
+  sourcesSearched: number;
+  candidatesDiscovered: number;
+  uniqueCandidatesDiscovered: number;
+  updatedAt: string;
 }

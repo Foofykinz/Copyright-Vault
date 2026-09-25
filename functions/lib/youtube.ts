@@ -10,9 +10,17 @@ interface GoogleApiErrorBody {
   error?: { message?: string; errors?: { reason?: string }[] };
 }
 
+/** A quotaExceeded response specifically — a subclass of UpstreamError so every existing catch of
+ * UpstreamError still works unchanged (instanceof matches the parent class too), while callers that
+ * need to distinguish "YouTube itself is out of quota" from any other upstream failure (Vault
+ * Hunter's search budget logic) can catch this specifically instead of string-matching a message. */
+export class YouTubeQuotaExceededError extends UpstreamError {}
+
 /** Wraps every googleapis.com call so quota/key/config failures come back as a clear UpstreamError
- * instead of a generic 500 — distinguishing "temporary YouTube failure" from "we're broken". */
-async function youtubeApiFetch(url: string): Promise<any> {
+ * instead of a generic 500 — distinguishing "temporary YouTube failure" from "we're broken". Exported
+ * so other YouTube-API callers (e.g. Vault Hunter's search.list wrapper) reuse this same API-key/
+ * error-handling path instead of duplicating it. */
+export async function youtubeApiFetch(url: string): Promise<any> {
   let res: Response;
   try {
     res = await fetch(url);
@@ -23,7 +31,7 @@ async function youtubeApiFetch(url: string): Promise<any> {
 
   const body = (await res.json().catch(() => null)) as GoogleApiErrorBody | null;
   const reason = body?.error?.errors?.[0]?.reason;
-  if (reason === "quotaExceeded") throw new UpstreamError("YouTube API quota exceeded for today.");
+  if (reason === "quotaExceeded") throw new YouTubeQuotaExceededError("YouTube API quota exceeded for today.");
   if (reason === "accessNotConfigured") {
     throw new UpstreamError("YouTube Data API v3 is not enabled for this Google Cloud project.");
   }
@@ -327,7 +335,7 @@ export async function fetchConfirmedShortsIds(channelId: string): Promise<Confir
   return { ids, hasMore };
 }
 
-function parseIsoDuration(iso: string | undefined): number | null {
+export function parseIsoDuration(iso: string | undefined): number | null {
   if (!iso) return null;
   const match = /^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso);
   if (!match) return null;
@@ -409,4 +417,28 @@ export function mapYouTubeVideo(
     concurrentViewers:
       raw.liveStreamingDetails?.concurrentViewers !== undefined ? Number(raw.liveStreamingDetails.concurrentViewers) : undefined,
   };
+}
+
+/** Pulls the 11-character video ID out of any common YouTube URL form (watch?v=, youtu.be/,
+ * /shorts/, /embed/, /live/). Returns null for anything else — used by Vault Hunter to recognize
+ * when a discovered candidate is actually the Vault source's own YouTube upload (see
+ * functions/lib/hunterRun.ts's self-source exclusion). */
+export function extractYouTubeVideoId(url: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.hostname.includes("youtu.be")) {
+    return parsed.pathname.split("/").filter(Boolean)[0] ?? null;
+  }
+  if (parsed.hostname.includes("youtube.com")) {
+    const v = parsed.searchParams.get("v");
+    if (v) return v;
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    const idx = segments.findIndex((s) => s === "shorts" || s === "embed" || s === "live");
+    if (idx !== -1 && segments[idx + 1]) return segments[idx + 1];
+  }
+  return null;
 }

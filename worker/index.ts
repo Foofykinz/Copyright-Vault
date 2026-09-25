@@ -34,6 +34,11 @@ import * as extensionInfringementReports from "../functions/api/extension/infrin
 import * as metadataLookup from "../functions/api/metadata/index";
 import * as youtubeChannelVideos from "../functions/api/youtube/channel-videos";
 import * as vimeoChannelVideos from "../functions/api/vimeo/channel-videos";
+import * as hunterSourceSettings from "../functions/api/hunter/sources/byId/settings";
+import * as hunterSourceHunt from "../functions/api/hunter/sources/byId/hunt";
+import * as hunterChannelsIndex from "../functions/api/hunter/channels/index";
+import * as hunterChannelById from "../functions/api/hunter/channels/byId";
+import * as hunterQuota from "../functions/api/hunter/quota/index";
 
 export interface Env extends ApiEnv {
   ASSETS: Fetcher;
@@ -90,6 +95,14 @@ register("/api/extension/infringement-reports", extensionInfringementReports);
 register("/api/metadata", metadataLookup);
 register("/api/youtube/channel-videos", youtubeChannelVideos);
 register("/api/vimeo/channel-videos", vimeoChannelVideos);
+// Vault Hunter (private) -- every handler enforces requireHunterAccess itself (see
+// functions/lib/hunterAuth.ts); these routes still go through the normal session-required gate
+// below since they're not in SESSION_EXEMPT_*, session auth then Hunter authorization on top of it.
+register("/api/hunter/sources/:videoId/settings", hunterSourceSettings);
+register("/api/hunter/sources/:videoId/hunt", hunterSourceHunt);
+register("/api/hunter/channels", hunterChannelsIndex);
+register("/api/hunter/channels/:id", hunterChannelById);
+register("/api/hunter/quota", hunterQuota);
 
 // Routes reachable without a staff login: /api/auth/* handles its own auth (login has none by
 // nature; logout/session/change-password each call verifySession internally), and the extension

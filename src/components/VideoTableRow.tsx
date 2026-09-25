@@ -6,6 +6,8 @@ import { centralDateString } from "../../shared/dates";
 import { PlatformTag } from "./PlatformTag";
 import { DeadlineBadge } from "./DeadlineBadge";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { HunterHuntButton } from "./HunterHuntButton";
+import { useCurrentUser } from "../hooks/useCurrentUser";
 import type { VideoWithDeadline } from "../../shared/types";
 
 interface VideoTableRowProps {
@@ -20,6 +22,7 @@ interface VideoTableRowProps {
 type EditField = "caption" | "viewCount" | "notes" | "publicationDate" | null;
 
 export function VideoTableRow({ video, selected, onToggleSelect, onUpdated, onDeleted, removeFromFolderId }: VideoTableRowProps) {
+  const user = useCurrentUser();
   const [editing, setEditing] = useState<EditField>(null);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
@@ -192,6 +195,7 @@ export function VideoTableRow({ video, selected, onToggleSelect, onUpdated, onDe
       </td>
       <td>
         <div className="flex-row">
+          {user.hunterAccess && <HunterHuntButton videoId={video.id} />}
           {removeFromFolderId && (
             <button
               className="btn btn-ghost btn-sm"

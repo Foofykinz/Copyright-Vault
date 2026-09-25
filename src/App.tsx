@@ -15,6 +15,7 @@ import { ExtensionPage } from "./pages/ExtensionPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage";
 import { useAuth } from "./hooks/useAuth";
+import { CurrentUserContext } from "./hooks/useCurrentUser";
 import { LoadingBlock } from "./components/StateBlock";
 
 export default function App() {
@@ -37,26 +38,28 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
-      <Sidebar user={user} onLogout={logout} />
-      <div className="main">
-        <ExtensionInstallBanner />
-        <div className="main-scroll">
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/clients/:clientId" element={<ClientPage />} />
-            <Route path="/clients/:clientId/social/:accountId" element={<SocialAccountPage />} />
-            <Route path="/clients/:clientId/combination-folders" element={<ClientCombinationFoldersPage />} />
-            <Route path="/clients/:clientId/combination-folders/:folderId" element={<CombinationFolderPage />} />
-            <Route path="/clients/:clientId/rights-manager" element={<RightsManagerHistoryPage />} />
-            <Route path="/rights-manager" element={<RightsManagerArchivePage />} />
-            <Route path="/infringements" element={<InfringementReportsPage />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/deadlines" element={<DeadlinesPage />} />
-            <Route path="/extension" element={<ExtensionPage />} />
-          </Routes>
+    <CurrentUserContext.Provider value={user}>
+      <div className="app-shell">
+        <Sidebar user={user} onLogout={logout} />
+        <div className="main">
+          <ExtensionInstallBanner />
+          <div className="main-scroll">
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/clients/:clientId" element={<ClientPage />} />
+              <Route path="/clients/:clientId/social/:accountId" element={<SocialAccountPage />} />
+              <Route path="/clients/:clientId/combination-folders" element={<ClientCombinationFoldersPage />} />
+              <Route path="/clients/:clientId/combination-folders/:folderId" element={<CombinationFolderPage />} />
+              <Route path="/clients/:clientId/rights-manager" element={<RightsManagerHistoryPage />} />
+              <Route path="/rights-manager" element={<RightsManagerArchivePage />} />
+              <Route path="/infringements" element={<InfringementReportsPage />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/deadlines" element={<DeadlinesPage />} />
+              <Route path="/extension" element={<ExtensionPage />} />
+            </Routes>
+          </div>
         </div>
       </div>
-    </div>
+    </CurrentUserContext.Provider>
   );
 }
