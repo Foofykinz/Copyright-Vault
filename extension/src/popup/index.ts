@@ -794,6 +794,76 @@ async function sendSelected(): Promise<void> {
 // gets a more readable, less-blurry-when-zoomed-in screenshot automatically.
 const ZOOM_CANDIDATES = [0.65, 0.5, 0.35, 0.25];
 
+const HIDDEN_FOR_SCREENSHOT_ATTR = "data-viral-drm-hidden";
+
+// Content Protection's match page has a "Territories" card that's nothing but ~250 country codes
+// ("AD, AE, AF, ..."): useless in evidence, and tall enough to force the zoom-stepping above down to
+// its smallest, blurriest level. Hidden just for the duration of the capture, then restored (see
+// restoreHiddenElements) -- the page itself is left exactly as it was.
+//
+// Found by the list's own shape (a long run of two-letter uppercase codes), not by the "Territories"
+// heading text or any class name -- language-independent, and nothing generated to go stale. From
+// that text element it walks up to the enclosing card: the highest ancestor whose parent doesn't
+// hold any other substantial sibling content (the neighboring cards do; the card's own heading and
+// "Protected territories:" label are too short to count). A size guard then refuses to hide anything
+// much bigger than the list itself, so a wrong guess about the card boundary can never blank out
+// real content -- it just hides nothing. Self-contained on purpose: functions passed to
+// chrome.scripting.executeScript can't close over anything outside their own body.
+async function hideTerritoriesCard(tabId: number): Promise<number> {
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (attr: string) => {
+      const clean = (s: string | null) => (s ?? "").replace(/[​-‍﻿]/g, "").replace(/\s+/g, " ").trim();
+      const codeList = /^(?:[A-Z]{2},\s*){15,}[A-Z]{2}\.?$/;
+
+      const matching: HTMLElement[] = [];
+      for (const el of document.querySelectorAll<HTMLElement>("div, span, p")) {
+        const text = clean(el.textContent);
+        if (text.length > 60 && codeList.test(text)) matching.push(el);
+      }
+      const innermost = matching.filter((el) => !matching.some((other) => other !== el && el.contains(other)));
+
+      let hidden = 0;
+      for (const list of innermost) {
+        const listLength = clean(list.textContent).length;
+        let card: HTMLElement = list;
+        while (card.parentElement && card.parentElement !== document.body) {
+          const parent: HTMLElement = card.parentElement;
+          const hasBulkySibling = [...parent.children].some((c) => c !== card && clean(c.textContent).length > 80);
+          if (hasBulkySibling) break;
+          card = parent;
+        }
+        if (card === document.body || card === document.documentElement) continue;
+        if (clean(card.textContent).length > listLength + 400) continue; // bigger than a heading + label + list: not the card
+        if (card.hasAttribute(attr)) continue;
+        card.setAttribute(attr, card.style.cssText);
+        card.style.setProperty("display", "none", "important");
+        hidden++;
+      }
+      return hidden;
+    },
+    args: [HIDDEN_FOR_SCREENSHOT_ATTR],
+  });
+  return (result as number) ?? 0;
+}
+
+async function restoreHiddenElements(tabId: number): Promise<void> {
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (attr: string) => {
+      for (const el of document.querySelectorAll<HTMLElement>(`[${attr}]`)) {
+        const original = el.getAttribute(attr) ?? "";
+        // An element that had no inline style at all gets its style attribute removed outright,
+        // not left behind as an empty style="".
+        if (original) el.style.cssText = original;
+        else el.removeAttribute("style");
+        el.removeAttribute(attr);
+      }
+    },
+    args: [HIDDEN_FOR_SCREENSHOT_ATTR],
+  });
+}
+
 // Each chrome.scripting.executeScript() call below re-declares its own copy of a
 // findScrollContainer() helper -- functions passed to that API must be fully self-contained (no
 // closures over anything outside the function body), so it can't be shared as a normal helper the
@@ -808,6 +878,16 @@ async function captureFullPageScreenshot(tabId: number, windowId: number): Promi
   const originalZoom = await chrome.tabs.getZoom(tabId);
 
   try {
+    // Before anything is measured, so the zoom-stepping below sizes itself against the page without
+    // the territories block. A failure here (unusual page, restricted frame) must never sink the
+    // screenshot itself -- worst case it's just taller/blurrier, exactly as before this existed.
+    try {
+      const hidden = await hideTerritoriesCard(tabId);
+      console.info(`[viral-drm] screenshot: hid ${hidden} territories block(s)`);
+    } catch (err) {
+      console.warn("[viral-drm] screenshot: couldn't hide the territories block, capturing as-is", err);
+    }
+
     type ScreenshotDims = { width: number; height: number; windowWidth: number; windowHeight: number };
     let dims: ScreenshotDims | null = null;
 
@@ -896,6 +976,11 @@ async function captureFullPageScreenshot(tabId: number, windowId: number): Promi
     }
     return canvas.toDataURL("image/png");
   } finally {
+    try {
+      await restoreHiddenElements(tabId);
+    } catch {
+      // tab navigated/closed mid-capture -- nothing left to restore
+    }
     await chrome.tabs.setZoom(tabId, originalZoom);
   }
 }

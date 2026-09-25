@@ -10,6 +10,7 @@ import {
   type RawCopyrightMatch,
   type RightsManagerPageKind,
 } from "../lib/rights-manager-scraped";
+import { matchIdFromUrl, parseDetectedDate, segmentRangeSeconds, stripReferenceStats } from "../lib/rights-manager-parse";
 
 // Broadened from a "/rights_manager/" path check on business.facebook.com alone to any
 // isRightsManagerHost() (manifest.json's content_scripts match patterns cover the same hosts, so
@@ -293,7 +294,7 @@ if (isRightsManagerHost(location.hostname)) {
     if (primary) return primary;
 
     const rawTitle = cleanText(link.textContent);
-    return rawTitle.replace(/\d+(\.\d+)?s,\s*\d+%\s*of the protected content.*$/i, "").trim() || rawTitle;
+    return stripReferenceStats(rawTitle) || rawTitle;
   }
 
   /** "Your protected content" reference asset(s) — confirmed DOM: each is a link to
@@ -320,39 +321,127 @@ if (isRightsManagerHost(location.hostname)) {
     return files;
   }
 
-  /** Match duration (the "32s" line, distinct from the trailing text findReferenceFiles() strips
-   * off of each reference asset's title) still isn't scraped — the DOM sample never isolated that
-   * value on its own, only ever seen concatenated onto a reference asset's title text.
+  /** Match ID. Meta's newer Content Protection layout dropped the "More details" panel that used to
+   * display it (and Video ID, and Date detected), so the URL's `?match_id=` is the primary source
+   * now -- it can't move around with a layout change or depend on the UI language. The old panel
+   * is kept as a fallback for any account still shown the previous layout. */
+  function readMatchId(): string | null {
+    return matchIdFromUrl(location.href) ?? readMoreDetailsValue("Match ID");
+  }
+
+  /** ISO timestamp for when Meta detected this match. Two layouts to cover: the older "More
+   * details" panel's "Date detected" row (full date), and the newer layout's "Detected Sep 25" line
+   * under each reference asset (no year -- see parseDetectedDate). A match can list several
+   * reference assets, each with its own "Detected ..." line; the earliest is the one closest to
+   * when the match itself first appeared.
    *
-   * "Date detected" is used as postedAt since there's no other date on this page to use — but it's
-   * a materially different thing (when Meta found the match, not when the infringing content was
-   * posted). Flagged here so it isn't mistaken for a scraping bug later. */
+   * Used as postedAt since there's no other date on this page -- but it's a materially different
+   * thing (when Meta found the match, not when the infringing content was posted). Flagged here so
+   * it isn't mistaken for a scraping bug later. */
+  function readDetectedAtIso(): string | null {
+    const legacyText = readMoreDetailsValue("Date detected");
+    if (legacyText) {
+      const legacy = new Date(legacyText);
+      if (!Number.isNaN(legacy.getTime())) return legacy.toISOString();
+    }
+
+    const found: Date[] = [];
+    for (const el of document.querySelectorAll<HTMLElement>("span, div")) {
+      const text = cleanText(el.textContent);
+      // Cheap pre-filter before the regex -- this walks every span/div on a large page.
+      if (text.length > 40 || !text.startsWith("Detected ")) continue;
+      const parsed = parseDetectedDate(text);
+      if (parsed) found.push(parsed);
+    }
+    if (found.length === 0) return null;
+    return new Date(Math.min(...found.map((d) => d.getTime()))).toISOString();
+  }
+
+  /** Total matched length in seconds, from the "Matching segments" chips ("00:21 - 02:39", one per
+   * segment; a match can have several). Found by an element's whole text being exactly a start-end
+   * range rather than by any class/structure, then de-duplicated so a wrapper that just repeats its
+   * child's text isn't counted twice. Null if none are found -- left blank rather than guessed. */
+  function readMatchDurationSec(): number | null {
+    const matching: HTMLElement[] = [];
+    for (const el of document.querySelectorAll<HTMLElement>("span, div")) {
+      const text = cleanText(el.textContent);
+      if (text.length <= 20 && segmentRangeSeconds(text) !== null) matching.push(el);
+    }
+    const innermost = matching.filter((el) => !matching.some((other) => other !== el && el.contains(other)));
+    const total = innermost.reduce((sum, el) => sum + (segmentRangeSeconds(cleanText(el.textContent)) ?? 0), 0);
+    return total > 0 ? total : null;
+  }
+
+  /** Fallback for the account name/profile link when no `aria-label="View X's profile"` link exists
+   * (that's what findProfileLink() needs, and it's only ever been confirmed on the older layout).
+   * Anchored on the one thing the newer layout definitely shows, a "114 followers" line, and takes
+   * the text immediately before it in reading order -- the account name renders directly above it.
+   * Text-order based rather than structure based, since no DOM sample of this layout's account row
+   * exists. The review card's name field stays editable either way. */
+  function findAccountNearFollowers(): { name: string; profileUrl: string | null } | null {
+    const followersRe = /^[\d,.]+[kKmM]?\s+followers?$/i;
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let followersNode: Node | null = null;
+    while (walker.nextNode()) {
+      if (followersRe.test(cleanText(walker.currentNode.textContent))) {
+        followersNode = walker.currentNode;
+        break;
+      }
+    }
+    if (!followersNode) return null;
+
+    walker.currentNode = followersNode;
+    while (walker.previousNode()) {
+      const text = cleanText(walker.currentNode.textContent);
+      if (!text) continue;
+      const parent = walker.currentNode.parentElement;
+      if (parent && ["SCRIPT", "STYLE"].includes(parent.tagName)) continue;
+      if (text.length > 100) return null; // not a name -- don't guess
+      const href = parent?.closest("a[href]")?.getAttribute("href");
+      let profileUrl: string | null = null;
+      try {
+        profileUrl = href ? stripFbclid(unwrapFacebookRedirect(new URL(href, location.origin).href)) : null;
+      } catch {
+        // unparseable href -- keep the name, drop the link
+      }
+      return { name: text, profileUrl };
+    }
+    return null;
+  }
+
   function mapMatchFromContentProtection(): CollectMatchResult {
     const seePost = findSeePostLink();
     if (!seePost?.href) return { ok: false, error: 'Couldn\'t find a "See post" link on this match.' };
     const infringingUrl = stripFbclid(unwrapFacebookRedirect(seePost.href));
 
     const profileLink = findProfileLink();
-    const infringerProfileUrl = profileLink?.href ? stripFbclid(unwrapFacebookRedirect(profileLink.href)) : null;
-    const infringerName = profileLink ? cleanText(profileLink.textContent) : "";
+    let infringerProfileUrl = profileLink?.href ? stripFbclid(unwrapFacebookRedirect(profileLink.href)) : null;
+    let infringerName = profileLink ? cleanText(profileLink.textContent) : "";
+    if (!infringerName) {
+      const nearFollowers = findAccountNearFollowers();
+      if (nearFollowers) {
+        infringerName = nearFollowers.name;
+        infringerProfileUrl = infringerProfileUrl ?? nearFollowers.profileUrl;
+      }
+    }
 
-    const matchId = readMoreDetailsValue("Match ID");
-    if (!matchId) return { ok: false, error: 'Couldn\'t find a "Match ID" on this page — make sure a match\'s details are open.' };
+    const matchId = readMatchId();
+    if (!matchId) return { ok: false, error: "Couldn't find a Match ID — open a specific match's details page (its URL should contain match_id)." };
 
-    const dateDetectedText = readMoreDetailsValue("Date detected");
-    const parsedDate = dateDetectedText ? new Date(dateDetectedText) : null;
-    const postedAt = parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate.toISOString() : null;
-    if (!postedAt) return { ok: false, error: 'Couldn\'t find/parse a "Date detected" value on this page.' };
+    const postedAt = readDetectedAtIso();
+    if (!postedAt) return { ok: false, error: 'Couldn\'t find/parse a "Detected <date>" value on this page.' };
 
     const match: CapturedMatch = {
       metaMatchId: matchId,
+      // Only the older layout's "More details" panel showed a Video ID; the newer layout doesn't
+      // display one anywhere, so this is null there rather than guessed from the post URL.
       metaVideoId: readMoreDetailsValue("Video ID"),
       infringerName: infringerName || "Unknown",
       infringingUrl,
       platform: detectPlatformFromUrl(infringingUrl),
       postedAt,
       notes: "",
-      matchDurationSec: null, // not yet scraped — see comment above
+      matchDurationSec: readMatchDurationSec(),
       videoViewCount: findLabeledCount("views"),
       pageFollowerCount: findLabeledCount("followers"),
       isAccountPrivate: null,
@@ -360,6 +449,15 @@ if (isRightsManagerHost(location.hostname)) {
       referenceFiles: findReferenceFiles(),
       videoAvailable: null,
     };
+    if (match.referenceFiles.length === 0) {
+      // The reference-asset card's link shape was only ever confirmed on the older layout
+      // (/content_protection/protection_details/?asset_id=). If the newer card links somewhere else,
+      // this shows where, without needing a DOM sample to find out.
+      console.warn(
+        "[viral-drm] Content Protection: no reference files found. content_protection links on this page:",
+        [...document.querySelectorAll<HTMLAnchorElement>('a[href*="content_protection"]')].map((a) => a.href)
+      );
+    }
     // Logged unconditionally (not just on a suspected problem) -- reports so far ("link isn't
     // being captured") haven't come with a description of what the bad value actually looked like,
     // so this removes the ambiguity going forward: the real captured value, visible in DevTools'
