@@ -13,7 +13,8 @@
     "deploy": "npm run build && wrangler deploy",
     "db:migrate:local": "wrangler d1 migrations apply viral-drm-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply viral-drm-db --remote",
-    "db:create": "wrangler d1 create viral-drm-db"
+    "db:create": "wrangler d1 create viral-drm-db",
+    "package:squeeze": "node squeeze/package.mjs"
   },
   "dependencies": {
     "react": "^19.2.7",
@@ -25,6 +26,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
+    "archiver": "^7.0.1",
     "typescript": "^7.0.2",
     "vite": "^8.1.4",
     "wrangler": "^4.111.0"

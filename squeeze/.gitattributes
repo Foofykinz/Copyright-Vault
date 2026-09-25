@@ -1,0 +1,13 @@
+# Keep every file byte-for-byte as it is in the repo -- a Windows checkout must never rewrite line
+# endings on files that ship to other machines. (Verified against the originals: all Unix LF,
+# including the .bat files, which are proven working as-is for the team today -- so they are left
+# untouched rather than "normalized".)
+*.command text eol=lf
+*.py      text eol=lf
+*.pyw     text eol=lf
+*.html    text eol=lf
+*.txt     text eol=lf
+VERSION   text eol=lf
+*.bat     -text
+*.png     binary
+*.ico     binary

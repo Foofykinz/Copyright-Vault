@@ -118,7 +118,7 @@ export function Sidebar({ user, onLogout }: { user: SessionUser; onLogout: () =>
           </li>
           <li>
             <NavLink to="/extension" className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}>
-              Extension
+              Extensions &amp; Tools
             </NavLink>
           </li>
         </ul>

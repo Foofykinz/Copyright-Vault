@@ -1,0 +1,2105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQUEEZE — Copyright Evidence Tool</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0a0a;--s1:#111;--s2:#181818;--s3:#222;--s4:#2a2a2a;
+  --border:#282828;--border2:#333;--border3:#444;
+  --acc:#d4f542;--acc2:#f5a342;--acc3:#42c8f5;--acc4:#c542f5;
+  --text:#e2e2e2;--muted:#555;--muted2:#777;--muted3:#999;
+  --danger:#f54b4b;--success:#4bf5a1;--warn:#f5d442;
+  --r:3px;
+}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;display:flex;flex-direction:column;}
+
+/* HEADER */
+header{background:var(--s1);border-bottom:1px solid var(--border);padding:0 28px;height:54px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:200;}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:1.8rem;color:var(--acc);letter-spacing:.1em;line-height:1;}
+.logo-sub{font-family:'DM Mono',monospace;font-size:.58rem;color:var(--muted2);letter-spacing:.2em;text-transform:uppercase;margin-top:1px;}
+.h-sep{width:1px;height:24px;background:var(--border);}
+#gpuBadge{display:flex;align-items:center;gap:7px;background:var(--s2);border:1px solid var(--border);border-radius:20px;padding:4px 12px 4px 8px;font-family:'DM Mono',monospace;font-size:.6rem;letter-spacing:.08em;color:var(--muted2);text-transform:uppercase;}
+#gpuBadge.nvidia{border-color:#76b900;color:#76b900;}
+#gpuBadge.amd{border-color:#ed1c24;color:#ed1c24;}
+#gpuBadge.intel{border-color:#0071c5;color:#0071c5;}
+.gpu-dot{width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.h-right{margin-left:auto;display:flex;align-items:center;gap:12px;}
+.ffmpeg-ok{font-family:'DM Mono',monospace;font-size:.58rem;color:var(--success);}
+.ffmpeg-err{font-family:'DM Mono',monospace;font-size:.58rem;color:var(--danger);}
+
+/* LAYOUT */
+.shell{display:flex;flex:1;min-height:0;}
+
+/* SIDEBAR */
+.sidebar{width:240px;min-width:240px;background:var(--s1);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+.sb-header{padding:16px 16px 10px;border-bottom:1px solid var(--border);}
+.sb-title{font-family:'DM Mono',monospace;font-size:.58rem;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;}
+.btn-new-proj{width:100%;background:var(--acc);color:#000;border:none;padding:9px;font-family:'Bebas Neue',sans-serif;font-size:.95rem;letter-spacing:.1em;border-radius:var(--r);cursor:pointer;transition:background .15s;}
+.btn-new-proj:hover{background:#c4e03a;}
+.proj-list{flex:1;overflow-y:auto;padding:8px;}
+.proj-item{padding:10px 12px;border-radius:var(--r);cursor:pointer;border:1px solid transparent;margin-bottom:4px;transition:all .15s;}
+.proj-item:hover{background:var(--s2);border-color:var(--border);}
+.proj-item.active{background:var(--s2);border-color:var(--acc);}
+.proj-name{font-size:.82rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.proj-meta{font-family:'DM Mono',monospace;font-size:.58rem;color:var(--muted2);margin-top:2px;}
+.proj-del{float:right;background:none;border:none;color:var(--muted);cursor:pointer;font-size:.8rem;padding:0 2px;line-height:1;}
+.proj-del:hover{color:var(--danger);}
+
+/* MAIN */
+.main-col{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;}
+.main{flex:1;overflow-y:auto;padding:28px 32px;display:flex;flex-direction:column;gap:24px;}
+
+/* PROJECT TABS — multiple open projects, switching never discards progress */
+.project-tabs{display:flex;gap:2px;background:var(--s1);border-bottom:1px solid var(--border);padding:8px 12px 0;overflow-x:auto;flex-shrink:0;}
+.project-tabs:empty{display:none;}
+.project-tab{display:flex;align-items:center;gap:8px;background:var(--s2);border:1px solid var(--border);border-bottom:none;border-radius:4px 4px 0 0;padding:8px 8px 8px 12px;font-size:.78rem;color:var(--muted2);cursor:pointer;white-space:nowrap;max-width:200px;transition:all .12s;}
+.project-tab:hover{color:var(--text);}
+.project-tab.active{background:var(--bg);color:var(--text);border-color:var(--border2);}
+.project-tab .pt-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.project-tab .pt-close{flex-shrink:0;color:var(--muted);font-size:.68rem;padding:2px 5px;border-radius:2px;line-height:1;}
+.project-tab .pt-close:hover{background:var(--s3);color:var(--danger);}
+.project-tab .pt-busy{width:6px;height:6px;border-radius:50%;background:var(--acc3);flex-shrink:0;animation:pulse 2s infinite;}
+
+/* EMPTY STATE */
+.empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:60px;text-align:center;color:var(--muted);}
+.empty-icon{font-size:3rem;opacity:.4;}
+.empty-title{font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:.08em;color:var(--muted2);}
+.empty-sub{font-family:'DM Mono',monospace;font-size:.65rem;letter-spacing:.08em;line-height:1.7;}
+
+/* STEP HEADER */
+.step-header{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
+.step-num{width:26px;height:26px;border-radius:50%;background:var(--acc);color:#000;font-family:'Bebas Neue',sans-serif;font-size:.9rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.step-num.done{background:var(--success);}
+.step-num.skip{background:var(--s3);color:var(--muted2);}
+.step-title{font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:.08em;}
+.step-badge{font-family:'DM Mono',monospace;font-size:.58rem;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:2px;margin-left:auto;}
+.sb-complete{background:rgba(75,245,161,.1);color:var(--success);}
+.sb-active{background:rgba(212,245,66,.1);color:var(--acc);}
+.sb-pending{background:var(--s3);color:var(--muted);}
+
+/* CARD */
+.card{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:18px 20px;}
+.card+.card{margin-top:0;}
+
+/* URL INPUT AREA */
+.url-area{display:flex;flex-direction:column;gap:10px;}
+.url-textarea{background:var(--s2);border:1px solid var(--border2);border-radius:var(--r);padding:11px 14px;font-family:'DM Mono',monospace;font-size:.72rem;color:var(--text);outline:none;resize:vertical;min-height:80px;width:100%;line-height:1.7;}
+.url-textarea:focus{border-color:var(--acc3);}
+.url-textarea::placeholder{color:var(--muted);}
+.url-row{display:flex;gap:10px;align-items:center;}
+.url-qual-chips{display:flex;gap:5px;}
+
+/* CHIPS */
+.chip{background:var(--s2);border:1px solid var(--border2);color:var(--muted2);padding:5px 10px;border-radius:2px;font-family:'DM Mono',monospace;font-size:.6rem;letter-spacing:.06em;cursor:pointer;transition:all .12s;white-space:nowrap;}
+.chip:hover{border-color:var(--acc);color:var(--acc);}
+.chip.active{background:var(--acc);color:#000;border-color:var(--acc);font-weight:500;}
+.chip.blue{}.chip.blue:hover{border-color:var(--acc3);color:var(--acc3);}
+.chip.blue.active{background:var(--acc3);color:#000;border-color:var(--acc3);}
+
+/* VIDEO TRAY */
+.tray{display:flex;flex-direction:column;gap:8px;}
+.tray-empty{border:1px dashed var(--border);border-radius:var(--r);padding:24px;text-align:center;font-family:'DM Mono',monospace;font-size:.62rem;color:var(--muted);letter-spacing:.08em;}
+
+.video-card{background:var(--s2);border:1px solid var(--border);border-radius:var(--r);display:flex;align-items:stretch;gap:0;overflow:hidden;transition:border-color .2s;}
+.video-card.downloading{border-color:var(--acc3);}
+.video-card.done-dl{border-color:var(--border);}
+.video-card.error{border-color:var(--danger);}
+.video-card.muted{border-color:var(--acc2);}
+.vc-muted-tag{font-family:'DM Mono',monospace;font-size:.54rem;letter-spacing:.06em;color:var(--acc2);background:rgba(245,163,66,.12);padding:1px 6px;border-radius:8px;margin-left:5px;vertical-align:middle;}
+
+/* drag handle */
+.vc-drag{width:28px;background:var(--s3);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.8rem;cursor:grab;flex-shrink:0;border-right:1px solid var(--border);}
+.vc-drag:active{cursor:grabbing;}
+
+.vc-thumb{width:96px;height:58px;object-fit:cover;flex-shrink:0;background:var(--s3);}
+.vc-thumb-placeholder{width:96px;height:58px;background:var(--s3);display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0;}
+
+.vc-info{flex:1;padding:9px 12px;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:3px;}
+.vc-title{font-size:.8rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.vc-meta{font-family:'DM Mono',monospace;font-size:.58rem;color:var(--muted2);}
+.vc-progress{height:2px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:5px;}
+.vc-progress-fill{height:100%;background:var(--acc3);transition:width .3s;}
+.vc-status{font-family:'DM Mono',monospace;font-size:.56rem;letter-spacing:.08em;text-transform:uppercase;}
+.vc-status.dl{color:var(--acc3);}
+.vc-status.done{color:var(--success);}
+.vc-status.err{color:var(--danger);}
+.vc-status.wait{color:var(--muted);}
+.vc-error{font-family:'DM Mono',monospace;font-size:.58rem;color:var(--danger);margin-top:3px;line-height:1.5;word-break:break-word;white-space:normal;}
+
+.vc-actions{display:flex;align-items:center;gap:6px;padding:0 10px;flex-shrink:0;}
+.vc-btn{background:var(--s3);border:1px solid var(--border2);color:var(--muted2);padding:5px 10px;border-radius:2px;font-family:'DM Mono',monospace;font-size:.58rem;letter-spacing:.06em;cursor:pointer;white-space:nowrap;transition:all .12s;}
+.vc-btn:hover{border-color:var(--acc);color:var(--acc);}
+.vc-btn.dl-btn:hover{border-color:var(--success);color:var(--success);}
+.vc-btn.del-btn:hover{border-color:var(--danger);color:var(--danger);}
+.vc-btn.mute-btn:hover{border-color:var(--acc2);color:var(--acc2);}
+.vc-btn.mute-btn.active{background:rgba(245,163,66,.15);border-color:var(--acc2);color:var(--acc2);}
+.vc-btn.disabled{opacity:.35;cursor:not-allowed;pointer-events:none;}
+
+/* UPLOAD DROP */
+.upload-drop{border:2px dashed var(--border2);border-radius:var(--r);padding:22px;text-align:center;cursor:pointer;transition:all .2s;}
+.upload-drop:hover,.upload-drop.over{border-color:var(--acc2);background:rgba(245,163,66,.03);}
+.upload-drop-text{font-family:'DM Mono',monospace;font-size:.65rem;color:var(--muted);letter-spacing:.08em;}
+
+/* COMBINE PANEL */
+.combine-options{display:flex;flex-direction:column;gap:12px;}
+.info-box{background:var(--s2);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;font-family:'DM Mono',monospace;font-size:.62rem;color:var(--muted2);line-height:1.8;}
+.info-box .ib-title{color:var(--acc2);font-weight:500;margin-bottom:6px;font-size:.65rem;letter-spacing:.08em;text-transform:uppercase;}
+.info-box .ib-row{display:flex;justify-content:space-between;}
+.info-box .ib-val{color:var(--text);}
+
+/* PROCESS BAR */
+.proc-bar-wrap{display:none;}
+.proc-bar-wrap.show{display:block;}
+.proc-bar{height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-bottom:6px;}
+.proc-bar-fill{height:100%;background:linear-gradient(90deg,var(--acc),var(--acc2));transition:width .4s;}
+.proc-log{background:var(--s2);border:1px solid var(--border);border-radius:var(--r);padding:8px 12px;font-family:'DM Mono',monospace;font-size:.58rem;color:var(--muted2);height:60px;overflow-y:auto;line-height:1.7;}
+.proc-log .lok{color:var(--success);}.proc-log .lw{color:var(--acc2);}.proc-log .le{color:var(--danger);}
+
+/* COMPRESS SLIDER */
+.compress-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+input[type=range]{-webkit-appearance:none;height:3px;background:var(--border2);border-radius:2px;outline:none;cursor:pointer;width:160px;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--acc);cursor:pointer;}
+.range-labels{font-family:'DM Mono',monospace;font-size:.56rem;color:var(--muted);display:flex;justify-content:space-between;width:160px;}
+
+/* FINAL PANEL */
+.final-card{background:var(--s2);border:1px solid var(--success);border-radius:var(--r);padding:16px 18px;}
+.final-title{font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:.08em;color:var(--success);margin-bottom:8px;}
+.final-meta{font-family:'DM Mono',monospace;font-size:.62rem;color:var(--muted2);line-height:1.9;margin-bottom:14px;}
+.btn-download-final{display:block;width:100%;background:var(--success);color:#000;border:none;padding:13px;font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:.1em;border-radius:var(--r);cursor:pointer;text-align:center;text-decoration:none;transition:background .15s;}
+.btn-download-final:hover{background:#3de094;}
+
+/* MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:500;display:flex;align-items:center;justify-content:center;display:none;}
+.modal-overlay.show{display:flex;}
+.modal{background:var(--s1);border:1px solid var(--border2);border-radius:var(--r);padding:28px;width:380px;max-width:90vw;}
+.modal-title{font-family:'Bebas Neue',sans-serif;font-size:1.4rem;letter-spacing:.08em;margin-bottom:16px;}
+.modal-input{width:100%;background:var(--s2);border:1px solid var(--border2);border-radius:var(--r);padding:11px 14px;font-family:'DM Sans',sans-serif;font-size:.9rem;color:var(--text);outline:none;margin-bottom:16px;}
+.modal-input:focus{border-color:var(--acc);}
+.modal-row{display:flex;gap:10px;}
+.btn-modal-ok{flex:1;background:var(--acc);color:#000;border:none;padding:11px;font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:.08em;border-radius:var(--r);cursor:pointer;}
+.btn-modal-ok:hover{background:#c4e03a;}
+.btn-modal-cancel{flex:1;background:transparent;border:1px solid var(--border2);color:var(--muted2);padding:11px;font-family:'DM Mono',monospace;font-size:.65rem;letter-spacing:.08em;text-transform:uppercase;border-radius:var(--r);cursor:pointer;}
+.btn-modal-cancel:hover{border-color:var(--muted2);color:var(--text);}
+
+/* PROMPT MODAL */
+.prompt-modal{background:var(--s1);border:1px solid var(--border2);border-radius:var(--r);padding:28px;width:420px;max-width:90vw;}
+.prompt-title{font-family:'Bebas Neue',sans-serif;font-size:1.3rem;letter-spacing:.08em;margin-bottom:8px;}
+.prompt-body{font-size:.82rem;color:var(--muted2);line-height:1.6;margin-bottom:20px;}
+.prompt-row{display:flex;gap:10px;}
+.btn-yes{flex:1;background:var(--acc);color:#000;border:none;padding:11px;font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:.1em;border-radius:var(--r);cursor:pointer;}
+.btn-yes:hover{background:#c4e03a;}
+.btn-no{flex:1;background:transparent;border:1px solid var(--border2);color:var(--muted2);padding:11px;font-family:'DM Mono',monospace;font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;border-radius:var(--r);cursor:pointer;}
+.btn-no:hover{border-color:var(--text);color:var(--text);}
+
+/* BTN PRIMARIES */
+.btn-acc{background:var(--acc);color:#000;border:none;padding:10px 18px;font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:.1em;border-radius:var(--r);cursor:pointer;transition:background .15s;}
+.btn-acc:hover:not(:disabled){background:#c4e03a;}
+.btn-acc:disabled{background:var(--s3);color:var(--muted);cursor:not-allowed;}
+.btn-acc2{background:var(--acc2);color:#000;border:none;padding:10px 18px;font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:.1em;border-radius:var(--r);cursor:pointer;transition:background .15s;}
+.btn-acc2:hover:not(:disabled){background:#e09030;}
+.btn-acc2:disabled{background:var(--s3);color:var(--muted);cursor:not-allowed;}
+.btn-ghost{background:transparent;border:1px solid var(--border2);color:var(--muted2);padding:9px 16px;font-family:'DM Mono',monospace;font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;border-radius:var(--r);cursor:pointer;transition:all .15s;}
+.btn-ghost:hover{border-color:var(--text);color:var(--text);}
+
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+
+.size-ok{color:var(--success);}
+.size-warn{color:var(--warn);}
+.size-over{color:var(--danger);}
+
+/* TOP NAV — switches between Projects / Batch / Rights Manager */
+.top-nav{display:flex;gap:4px;background:var(--s1);border-bottom:1px solid var(--border);padding:0 32px;}
+.top-nav-btn{background:transparent;border:none;border-bottom:2px solid transparent;color:var(--muted2);padding:12px 16px;font-family:'Bebas Neue',sans-serif;font-size:.95rem;letter-spacing:.08em;cursor:pointer;transition:all .15s;}
+.top-nav-btn:hover{color:var(--text);}
+.top-nav-btn.active{color:var(--acc);border-bottom-color:var(--acc);}
+
+/* RIGHTS MANAGER */
+.rt-cell-input{width:100%;background:var(--s2);border:1px solid var(--border2);border-radius:2px;padding:5px 7px;font-family:'DM Sans',sans-serif;font-size:.74rem;color:var(--text);outline:none;}
+.rt-cell-input:focus{border-color:var(--acc3);}
+.rt-cell-input:disabled{background:transparent;border-color:transparent;color:var(--muted2);}
+.rt-badge{font-family:'DM Mono',monospace;font-size:.56rem;letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;border-radius:10px;white-space:nowrap;display:inline-block;}
+.rt-badge.ready{background:rgba(75,245,161,.12);color:var(--success);}
+.rt-badge.review{background:rgba(245,163,66,.12);color:var(--acc2);}
+.rt-badge.queued,.rt-badge.metadata,.rt-badge.downloading,.rt-badge.renaming{background:rgba(66,200,245,.12);color:var(--acc3);}
+.rt-badge.complete{background:rgba(75,245,161,.12);color:var(--success);}
+.rt-badge.failed{background:rgba(245,75,75,.12);color:var(--danger);}
+.rt-badge.skipped,.rt-badge.cancelled{background:var(--s3);color:var(--muted2);}
+#rightsTable th{white-space:nowrap;}
+
+/* SELF-UPDATE BANNER */
+.update-banner{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:rgba(66,200,245,.08);border-bottom:1px solid rgba(66,200,245,.35);padding:9px 28px;font-family:'DM Mono',monospace;font-size:.68rem;color:var(--text);}
+.update-banner.ok{background:rgba(75,245,161,.08);border-bottom-color:rgba(75,245,161,.35);}
+.update-banner.err{background:rgba(245,75,75,.08);border-bottom-color:rgba(245,75,75,.4);}
+.update-banner .ub-msg{flex:1;min-width:220px;line-height:1.7;}
+.update-banner .ub-notes{color:var(--muted3);font-size:.62rem;}
+.ub-btn{background:transparent;border:1px solid var(--border3);color:var(--text);padding:6px 14px;border-radius:var(--r);font-family:'DM Mono',monospace;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;}
+.ub-btn:hover{border-color:var(--text);}
+.ub-btn.primary{background:var(--acc3);border-color:var(--acc3);color:#000;font-weight:500;}
+.ub-btn.primary:hover{filter:brightness(1.1);}
+#rightsTable td{vertical-align:top;}
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <img src="lemon_preview.png" alt="Squeeze lemon" style="width:36px;height:36px;object-fit:contain;image-rendering:auto;">
+    <div>
+      <div class="logo">SQUEEZE</div>
+      <div class="logo-sub">Copyright Evidence Tool <span id="verLabel" style="opacity:.7;"></span></div>
+    </div>
+  </div>
+  <div class="h-sep"></div>
+  <div id="gpuBadge"><div class="gpu-dot"></div><span id="gpuLabel">Detecting GPU...</span></div>
+  <div class="h-right">
+    <span id="ffmpegLabel" class="ffmpeg-ok">Checking FFmpeg...</span>
+    <button id="cleanupBtn" title="Wipe all temp working files from squeeze_work" style="background:transparent;border:1px solid var(--border2);color:var(--muted2);padding:4px 12px;border-radius:var(--r);font-family:'DM Mono',monospace;font-size:.58rem;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;transition:all .15s;" onmouseover="this.style.borderColor='var(--danger)';this.style.color='var(--danger)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--muted2)'">🗑 Clean Temp Files</button>
+  </div>
+</header>
+
+<!-- Self-update banner (see the SELF-UPDATE section of the script). Hidden unless there is
+     something to say: an update is available, or the last update just finished / failed. -->
+<div id="updateBanner" class="update-banner" style="display:none;" role="status"></div>
+
+<div class="top-nav">
+  <button class="top-nav-btn active" data-view="projects">Projects</button>
+  <button class="top-nav-btn" data-view="batch">Batch</button>
+  <button class="top-nav-btn" data-view="rights">Rights Manager</button>
+</div>
+
+<div class="shell" id="view-projects">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sb-header">
+      <div class="sb-title">Projects</div>
+      <button class="btn-new-proj" id="newProjBtn">+ New Project</button>
+    </div>
+    <div class="proj-list" id="projList"></div>
+  </div>
+
+  <!-- MAIN COLUMN — tab strip + whichever open project is active -->
+  <div class="main-col">
+    <div class="project-tabs" id="projectTabs"></div>
+    <div class="main" id="main">
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">📁</div>
+        <div class="empty-title">No Project Selected</div>
+        <div class="empty-sub">Create a new project to get started.<br>Each project becomes a copyright filing package.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- BATCH TAB -->
+<div class="tab-panel" id="tab-batch">
+<div class="app-body">
+  <div style="display:grid;grid-template-columns:1fr 280px;gap:24px;align-items:start;">
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <div class="card">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:.1em;color:var(--acc);margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border);">Batch Download + Compress</div>
+        <div style="font-family:'DM Mono',monospace;font-size:.6rem;color:var(--muted2);margin-bottom:10px;line-height:1.8;">One URL per line. Each video becomes its own file — no combining.<br>Files over 450 MB are compressed automatically at your chosen settings.</div>
+        <textarea class="url-textarea" id="batchUrlInput" placeholder="Paste URLs here — one per line&#10;https://youtube.com/watch?v=...&#10;https://tiktok.com/@user/video/..." style="min-height:120px;width:100%;margin-bottom:10px;"></textarea>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <button class="btn-ghost" id="addBatchUrlsBtn">+ Add to Queue</button>
+          <span style="font-family:'DM Mono',monospace;font-size:.6rem;color:var(--muted2);" id="batchUrlCount"></span>
+        </div>
+      </div>
+      <div id="batchQueueCard" style="display:none;" class="card">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:.1em;color:var(--acc);margin-bottom:12px;">Queue (<span id="batchQueueCount">0</span>)</div>
+        <div id="batchQueueList" style="display:flex;flex-direction:column;gap:8px;max-height:400px;overflow-y:auto;"></div>
+        <button class="btn-ghost" id="clearBatchBtn" style="margin-top:10px;width:100%;">Clear Queue</button>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div class="panel">
+        <div class="panel-title">Settings</div>
+        <div style="margin-bottom:14px;">
+          <div class="s-label" style="margin-bottom:7px;">Download Quality</div>
+          <div class="chips" id="batchQualChips">
+            <button class="chip active" data-q="best">Best</button>
+            <button class="chip" data-q="1080">1080p</button>
+            <button class="chip" data-q="720">720p</button>
+          </div>
+        </div>
+        <div style="margin-bottom:14px;">
+          <div class="s-label" style="margin-bottom:7px;">Compress To</div>
+          <div class="chips" id="batchResChips">
+            <button class="chip" data-scale="">Original</button>
+            <button class="chip active" data-scale="1280:-2">720p</button>
+            <button class="chip" data-scale="854:-2">480p</button>
+          </div>
+        </div>
+        <div>
+          <div class="s-label" style="margin-bottom:7px;">Encode Speed</div>
+          <div class="chips" id="batchSpeedChips">
+            <button class="chip" data-fast="false">Quality</button>
+            <button class="chip active" data-fast="true">Fast</button>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Save Location</div>
+        <div id="batchFolderDisplay" style="font-family:'DM Mono',monospace;font-size:.6rem;color:var(--muted2);margin-bottom:10px;line-height:1.8;word-break:break-all;">No folder selected yet</div>
+        <button class="btn-ghost" id="batchPickFolderBtn" style="width:100%;">📁 Choose Folder</button>
+      </div>
+      <button class="btn-acc" id="runBatchBtn" disabled>⚡ RUN BATCH OVERNIGHT</button>
+      <div id="batchStatus" style="font-family:'DM Mono',monospace;font-size:.6rem;color:var(--muted2);line-height:2;display:none;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;"></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- RIGHTS MANAGER TAB — fully independent pipeline: Import CSV → Review → Download → Complete -->
+<div class="tab-panel" id="tab-rights" style="display:none;">
+<div class="app-body" style="max-width:1400px;">
+
+  <div class="card" id="rightsImportCard">
+    <div class="step-header"><div class="step-num">1</div><div class="step-title">Import CSV</div></div>
+    <div style="max-width:360px;margin-bottom:16px;">
+      <div style="font-family:'DM Mono',monospace;font-size:.62rem;color:var(--muted2);margin-bottom:7px;">Default client name (used only for rows with no client)</div>
+      <input type="text" id="rightsDefaultClient" class="modal-input" style="margin-bottom:0;" placeholder="e.g. Reed Timmer">
+    </div>
+    <div class="upload-drop" id="rightsDropZone">
+      <input type="file" id="rightsFileInput" accept=".csv" style="display:none;">
+      <div class="upload-drop-text">📄 Click to choose a CSV, or drag and drop it here</div>
+    </div>
+    <div id="rightsImportError" style="display:none;margin-top:10px;color:var(--danger);font-family:'DM Mono',monospace;font-size:.68rem;"></div>
+  </div>
+
+  <div class="card" id="rightsReviewCard" style="display:none;margin-top:20px;">
+    <div class="step-header">
+      <div class="step-num">2</div><div class="step-title">Review &amp; Edit</div>
+      <div class="step-badge sb-pending" id="rightsSummaryBadge" style="margin-left:auto;"></div>
+    </div>
+    <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:.72rem;" id="rightsTable">
+        <thead>
+          <tr style="text-align:left;border-bottom:1px solid var(--border);color:var(--muted2);font-family:'DM Mono',monospace;font-size:.6rem;text-transform:uppercase;letter-spacing:.06em;">
+            <th style="padding:8px 6px;">#</th>
+            <th style="padding:8px 6px;">Client</th>
+            <th style="padding:8px 6px;">Platform</th>
+            <th style="padding:8px 6px;">Date</th>
+            <th style="padding:8px 6px;">Title / Description</th>
+            <th style="padding:8px 6px;">Source URL</th>
+            <th style="padding:8px 6px;">Proposed Filename</th>
+            <th style="padding:8px 6px;">Status</th>
+            <th style="padding:8px 6px;">Incl.</th>
+          </tr>
+        </thead>
+        <tbody id="rightsTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" id="rightsRunCard" style="display:none;margin-top:20px;">
+    <div class="step-header"><div class="step-num">3</div><div class="step-title">Output Folder &amp; Download</div></div>
+    <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
+      <button class="btn-ghost" id="rightsPickFolderBtn">📁 Choose Output Folder</button>
+      <span id="rightsFolderDisplay" style="font-family:'DM Mono',monospace;font-size:.62rem;color:var(--muted2);">No folder selected yet</span>
+      <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
+        <span style="font-family:'DM Mono',monospace;font-size:.6rem;color:var(--muted2);">Concurrent downloads</span>
+        <select id="rightsConcurrency" style="background:var(--s2);border:1px solid var(--border2);color:var(--text);border-radius:var(--r);padding:6px 10px;font-family:'DM Mono',monospace;font-size:.68rem;">
+          <option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5</option>
+        </select>
+      </div>
+      <button class="btn-acc" id="rightsStartBtn" disabled>⚡ START DOWNLOAD</button>
+    </div>
+    <div id="rightsRunError" style="display:none;margin-top:10px;color:var(--danger);font-family:'DM Mono',monospace;font-size:.68rem;"></div>
+  </div>
+
+  <div class="card" id="rightsProgressCard" style="display:none;margin-top:20px;">
+    <div class="step-header">
+      <div class="step-num">4</div><div class="step-title">Download Progress</div>
+      <button class="btn-ghost" id="rightsCancelBtn" style="margin-left:auto;">Cancel Remaining</button>
+    </div>
+    <div class="proc-bar"><div class="proc-bar-fill" id="rightsOverallBar" style="width:0%;"></div></div>
+    <div id="rightsOverallText" style="margin-top:6px;font-family:'DM Mono',monospace;font-size:.68rem;color:var(--muted2);"></div>
+  </div>
+
+  <div class="card final-card" id="rightsDoneCard" style="display:none;margin-top:20px;">
+    <div class="final-title">Batch Complete</div>
+    <div class="final-meta" id="rightsDoneSummary"></div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn-acc2" id="rightsRetryBtn" style="display:none;">Retry Failed Rows</button>
+      <button class="btn-ghost" id="rightsResetBtn">Import Another CSV</button>
+    </div>
+  </div>
+
+</div>
+</div>
+
+
+<!-- CREATE PROJECT MODAL -->
+<div class="modal-overlay" id="newProjModal">
+  <div class="modal">
+    <div class="modal-title">New Project</div>
+    <input class="modal-input" id="projNameInput" type="text" placeholder="e.g. Smith v. TikTok User 2025-06" maxlength="80">
+    <div style="font-family:'DM Mono',monospace;font-size:.58rem;color:var(--muted2);margin:-10px 0 7px;">Client name (used in saved filenames — optional, can set later)</div>
+    <input class="modal-input" id="projClientInput" type="text" placeholder="e.g. Reed Timmer" maxlength="80">
+    <div class="modal-row">
+      <button class="btn-modal-ok" id="createProjBtn">CREATE</button>
+      <button class="btn-modal-cancel" id="cancelProjBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- YES/NO PROMPT MODAL -->
+<div class="modal-overlay" id="promptModal">
+  <div class="prompt-modal">
+    <div class="prompt-title" id="promptTitle">Prompt</div>
+    <div class="prompt-body" id="promptBody"></div>
+    <div class="prompt-row">
+      <button class="btn-yes" id="promptYes">YES</button>
+      <button class="btn-no" id="promptNo">No, skip</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════
+let currentProject = null;   // { id, name, videos: [] }
+let dlPollers = {};          // dl_id -> intervalId
+let procPoller = null;
+let dlQuality = 'best';
+let compressQuality = 28;
+let mutedVideoIds = new Set();   // video ids whose audio gets silenced when combining
+
+// Multiple open project tabs — each tab just means "loadProject() has been
+// called for this pid and it stays in the strip." State itself always comes
+// from the backend (see restoreActiveState()), never from client memory
+// alone, so switching tabs — or even reloading the whole page — can never
+// silently lose an in-progress fetch/combine/compress the way it used to.
+let openTabs = [];           // ordered list of open pids
+let activeTabId = null;
+let tabMeta = {};            // pid -> { name, busy }
+
+const SIZE_LIMIT = 450 * 1024 * 1024; // 450 MB
+
+// ═══════════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════════
+function fmt(b){
+  if(!b&&b!==0)return'?';
+  if(b<1024)return b+' B';
+  if(b<1024**2)return(b/1024).toFixed(1)+' KB';
+  return(b/1024**2).toFixed(2)+' MB';
+}
+function fmtDur(s){if(!s)return'';const m=Math.floor(s/60),sc=Math.floor(s%60);return`${m}:${sc.toString().padStart(2,'0')}`;}
+function timeAgo(ts){const s=Math.floor((Date.now()/1000)-ts);if(s<60)return'just now';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago';}
+
+function prompt(title, body){
+  return new Promise(resolve=>{
+    document.getElementById('promptTitle').textContent=title;
+    document.getElementById('promptBody').textContent=body;
+    document.getElementById('promptModal').classList.add('show');
+    document.getElementById('promptYes').onclick=()=>{document.getElementById('promptModal').classList.remove('show');resolve(true);};
+    document.getElementById('promptNo').onclick=()=>{document.getElementById('promptModal').classList.remove('show');resolve(false);};
+  });
+}
+
+function sizeClass(bytes){
+  if(!bytes)return'';
+  if(bytes<=SIZE_LIMIT)return'size-ok';
+  if(bytes<=SIZE_LIMIT*1.1)return'size-warn';
+  return'size-over';
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════
+async function init(){
+  try{
+    const r=await fetch('/api/status');
+    const d=await r.json();
+    document.getElementById('ffmpegLabel').textContent = d.ffmpeg?'FFmpeg OK':'FFmpeg missing!';
+    document.getElementById('ffmpegLabel').className = d.ffmpeg?'ffmpeg-ok':'ffmpeg-err';
+    if(d.version) document.getElementById('verLabel').textContent = 'v'+d.version;
+    if(d.gpu){
+      document.getElementById('gpuLabel').textContent=d.gpu.label;
+      document.getElementById('gpuBadge').className=d.gpu.brand;
+    }
+  }catch(e){console.error(e);}
+
+  try{
+    const r=await fetch('/api/projects');
+    const projs=await r.json();
+    projs.forEach(p=>renderSidebarItem(p));
+  }catch(e){console.error(e);}
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SIDEBAR
+// ═══════════════════════════════════════════════════════════
+function renderSidebarItem(p){
+  const existing=document.getElementById('sb-'+p.id);
+  if(existing)existing.remove();
+  const el=document.createElement('div');
+  el.className='proj-item'+(currentProject&&currentProject.id===p.id?' active':'');
+  el.id='sb-'+p.id;
+  el.innerHTML=`
+    <button class="proj-del" data-id="${p.id}" title="Delete project">✕</button>
+    <div class="proj-name">${p.name}</div>
+    <div class="proj-meta">${p.videos?p.videos.length:0} video(s) · ${timeAgo(p.created)}</div>
+  `;
+  el.addEventListener('click',e=>{
+    if(e.target.classList.contains('proj-del'))return;
+    openProjectTab(p.id);
+  });
+  el.querySelector('.proj-del').addEventListener('click',()=>deleteProject(p.id));
+  document.getElementById('projList').prepend(el);
+}
+
+async function deleteProject(pid){
+  if(!confirm('Delete this project and all its files?'))return;
+  await fetch(`/api/projects/${pid}`,{method:'DELETE'});
+  document.getElementById('sb-'+pid)?.remove();
+  closeProjectTab(pid);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  PROJECT TABS — multiple projects open at once, side by side
+// ═══════════════════════════════════════════════════════════
+function openProjectTab(pid){
+  if(!openTabs.includes(pid)) openTabs.push(pid);
+  activeTabId=pid;
+  loadProject(pid);
+}
+
+function closeProjectTab(pid){
+  const wasActive = activeTabId===pid;
+  openTabs=openTabs.filter(id=>id!==pid);
+  delete tabMeta[pid];
+  if(wasActive){
+    const next=openTabs[openTabs.length-1]||null;
+    activeTabId=next;
+    if(next) loadProject(next);
+    else { currentProject=null; renderMain(); renderProjectTabs(); }
+  } else {
+    renderProjectTabs();
+  }
+}
+
+function renderProjectTabs(){
+  const bar=document.getElementById('projectTabs');
+  if(!bar)return;
+  bar.innerHTML=openTabs.map(pid=>{
+    const meta=tabMeta[pid]||{name:'…',busy:false};
+    return `<div class="project-tab${pid===activeTabId?' active':''}" data-pid="${pid}">
+      ${meta.busy?'<span class="pt-busy" title="Still working"></span>':''}
+      <span class="pt-name">${escHtml(meta.name)}</span>
+      <span class="pt-close" data-close="${pid}" title="Close tab">✕</span>
+    </div>`;
+  }).join('');
+  bar.querySelectorAll('.project-tab').forEach(el=>{
+    el.addEventListener('click',e=>{
+      if(e.target.dataset.close)return;
+      const pid=el.dataset.pid;
+      if(pid!==activeTabId){ activeTabId=pid; loadProject(pid); }
+    });
+  });
+  bar.querySelectorAll('[data-close]').forEach(el=>{
+    el.addEventListener('click',e=>{e.stopPropagation();closeProjectTab(el.dataset.close);});
+  });
+}
+
+// Periodically refresh the busy-dot for open tabs that AREN'T currently
+// active (the active tab's own pollers already keep it current) — cheap,
+// read-only, just enough to see "is that other project still working"
+// without switching to it.
+setInterval(async()=>{
+  if(openTabs.length<2)return;
+  for(const pid of openTabs){
+    if(pid===activeTabId)continue;
+    try{
+      const r=await fetch(`/api/projects/${pid}`);
+      const p=await r.json();
+      const busy=(p.active_downloads&&p.active_downloads.length>0)
+        || (p.active_proc && (p.active_proc.status==='running'||p.active_proc.status==='queued'));
+      tabMeta[pid]={name:p.name,busy};
+    }catch(e){}
+  }
+  renderProjectTabs();
+}, 6000);
+
+// ═══════════════════════════════════════════════════════════
+//  NEW PROJECT MODAL
+// ═══════════════════════════════════════════════════════════
+document.getElementById('newProjBtn').onclick=()=>{
+  document.getElementById('projNameInput').value='';
+  document.getElementById('projClientInput').value='';
+  document.getElementById('newProjModal').classList.add('show');
+  setTimeout(()=>document.getElementById('projNameInput').focus(),100);
+};
+document.getElementById('cancelProjBtn').onclick=()=>document.getElementById('newProjModal').classList.remove('show');
+document.getElementById('projNameInput').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('createProjBtn').click();});
+document.getElementById('projClientInput').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('createProjBtn').click();});
+document.getElementById('createProjBtn').onclick=async()=>{
+  const name=document.getElementById('projNameInput').value.trim();
+  if(!name)return;
+  const client_name=document.getElementById('projClientInput').value.trim();
+  const r=await fetch('/api/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,client_name})});
+  const p=await r.json();
+  document.getElementById('newProjModal').classList.remove('show');
+  renderSidebarItem(p);
+  openProjectTab(p.id);
+};
+
+// ═══════════════════════════════════════════════════════════
+//  LOAD PROJECT
+// ═══════════════════════════════════════════════════════════
+async function loadProject(pid){
+  if(!currentProject || currentProject.id!==pid) mutedVideoIds=new Set();  // fresh switch, not just a re-render of the same project
+  const r=await fetch(`/api/projects/${pid}`);
+  currentProject=await r.json();
+  tabMeta[pid]={name:currentProject.name,busy:false};
+  document.querySelectorAll('.proj-item').forEach(el=>el.classList.remove('active'));
+  document.getElementById('sb-'+pid)?.classList.add('active');
+  renderMain();
+  restoreActiveState();
+  renderProjectTabs();
+}
+
+// Reconstruct anything still in flight for this project from the backend's
+// own state (active_downloads / active_proc) rather than client memory —
+// this is what lets switching tabs (or reloading the page) never lose an
+// in-progress fetch/combine/compress, no matter how long it's been running.
+function restoreActiveState(){
+  if(!currentProject)return;
+  let busy=false;
+
+  const activeDls=currentProject.active_downloads||[];
+  if(activeDls.length){
+    if(!currentProject.videos) currentProject.videos=[];
+    activeDls.forEach(d=>{
+      if(!currentProject.videos.find(v=>v.id===d.id)){
+        currentProject.videos.push({
+          id:d.id, type:'download', path:'', filename:'',
+          title:d.url||'Downloading...', platform:'', thumbnail:'', date:'',
+          size_bytes:0, duration_s:0, width:0, height:0, url:d.url||''
+        });
+      }
+      startDlPoller(d.id);
+    });
+    renderTray();
+    busy=true;
+  }
+
+  const proc=currentProject.active_proc;
+  if(proc){
+    if(proc.type==='combine'){
+      if(proc.status==='running'||proc.status==='queued'){
+        document.getElementById('combineBtn').disabled=true;
+        document.getElementById('combineProgress').classList.add('show');
+        document.getElementById('s3badge').textContent='Processing';
+        document.getElementById('s3badge').className='step-badge sb-active';
+        currentCombineProcId=proc.id;
+        pollProc(proc.id,'combineFill','combineLog',onCombineDone);
+        busy=true;
+      } else if(proc.status==='done'){
+        document.getElementById('s3badge').textContent='Done';
+        document.getElementById('s3badge').className='step-badge sb-complete';
+        document.getElementById('s3num').className='step-num done';
+        currentFinalPath=proc.output_path;
+        unlockStep4(proc);
+      } else if(proc.status==='error'){
+        document.getElementById('s3badge').textContent='Failed';
+        document.getElementById('s3badge').style.color='var(--danger)';
+        addLog('combineLog','Combine failed — try again.','le');
+        document.getElementById('combineBtn').disabled=false;
+      }
+    } else if(proc.type==='compress'){
+      // A compress job only ever starts after combine finished, so step 3
+      // reads as done and step 4 is unlocked before showing compress itself.
+      document.getElementById('s3badge').textContent='Done';
+      document.getElementById('s3badge').className='step-badge sb-complete';
+      document.getElementById('s3num').className='step-num done';
+      const step4=document.getElementById('step4');
+      step4.style.opacity=''; step4.style.pointerEvents='';
+      document.getElementById('compressOptions').style.display='block';
+      document.getElementById('compressBtn').style.display='block';
+      bindCompressOptions();
+      if(proc.status==='running'||proc.status==='queued'){
+        document.getElementById('compressBtn').disabled=true;
+        document.getElementById('compressProgress').classList.add('show');
+        document.getElementById('s4badge').textContent='Compressing';
+        document.getElementById('s4badge').className='step-badge sb-active';
+        currentCompressProcId=proc.id;
+        pollProc(proc.id,'compressFill','compressLog',onCompressDone);
+        busy=true;
+      } else if(proc.status==='done'){
+        document.getElementById('s4badge').textContent='Done';
+        document.getElementById('s4badge').className='step-badge sb-complete';
+        document.getElementById('s4num').className='step-num done';
+        currentCompressProcId=proc.id;
+        onCompressDone(proc);
+      } else if(proc.status==='error'){
+        document.getElementById('s4badge').textContent='Failed';
+        document.getElementById('s4badge').style.color='var(--danger)';
+        addLog('compressLog','Compression failed — try again.','le');
+        document.getElementById('compressBtn').disabled=false;
+      }
+    }
+  }
+
+  if(tabMeta[currentProject.id]) tabMeta[currentProject.id].busy=busy;
+}
+
+async function refreshProject(){
+  if(!currentProject)return;
+  const r=await fetch(`/api/projects/${currentProject.id}`);
+  currentProject=await r.json();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  RENDER MAIN
+// ═══════════════════════════════════════════════════════════
+function renderMain(){
+  const main=document.getElementById('main');
+  if(!currentProject){
+    main.innerHTML='<div class="empty-state" id="emptyState"><div class="empty-icon">📁</div><div class="empty-title">No Project Selected</div><div class="empty-sub">Create a new project to get started.<br>Each project becomes a copyright filing package.</div></div>';
+    return;
+  }
+  main.innerHTML=`
+    <!-- CLIENT NAME — drives the "Client - Date - Title" filename/display format -->
+    <div class="card" style="display:flex;align-items:center;gap:10px;padding:12px 20px;">
+      <span style="font-family:'DM Mono',monospace;font-size:.6rem;color:var(--muted2);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;">Client Name</span>
+      <input id="clientNameInput" value="${escHtml(currentProject.client_name||'')}" placeholder="Used as the first part of every saved filename" style="flex:1;background:var(--s2);border:1px solid var(--border2);border-radius:var(--r);padding:7px 10px;font-family:'DM Sans',sans-serif;font-size:.8rem;color:var(--text);outline:none;">
+      <span id="clientNameSaved" style="font-family:'DM Mono',monospace;font-size:.6rem;color:var(--success);opacity:0;transition:opacity .3s;">Saved ✓</span>
+    </div>
+
+    <!-- STEP 1: FETCH -->
+    <div class="card" id="step1">
+      <div class="step-header">
+        <div class="step-num" id="s1num">1</div>
+        <div>
+          <div class="step-title">Fetch Videos from URLs</div>
+          <div style="font-family:'DM Mono',monospace;font-size:.58rem;color:var(--muted2);">YouTube · TikTok · Instagram · Facebook · X · Vimeo · 1000+ sites</div>
+        </div>
+        <span class="step-badge sb-active" id="s1badge">Active</span>
+      </div>
+      <div class="url-area">
+        <textarea class="url-textarea" id="urlInput" placeholder="Paste URLs here — one per line&#10;https://youtube.com/watch?v=...&#10;https://tiktok.com/@user/video/...&#10;https://instagram.com/reel/..."></textarea>
+        <div class="url-row">
+          <div class="url-qual-chips" id="qualChips">
+            <button class="chip active" data-q="best">Best</button>
+            <button class="chip" data-q="1080">1080p</button>
+            <button class="chip" data-q="720">720p</button>
+            <button class="chip" data-q="480">480p</button>
+          </div>
+          <button class="btn-ghost" id="previewDatesBtn">🔍 Preview Dates</button>
+          <button class="btn-acc" id="fetchBtn">⬇ FETCH URLS</button>
+        </div>
+        <div id="urlPreviewResults" style="display:none;margin-top:4px;"></div>
+      </div>
+    </div>
+
+    <!-- VIDEO TRAY -->
+    <div class="card" id="trayCard">
+      <div class="step-header" style="margin-bottom:10px;">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:.08em;">Video Tray</div>
+        <div style="margin-left:auto;font-family:'DM Mono',monospace;font-size:.58rem;color:var(--muted2);" id="trayMeta"></div>
+      </div>
+      <div class="tray" id="videoTray">
+        <div class="tray-empty">No videos yet — fetch from URLs above or upload files below</div>
+      </div>
+    </div>
+
+    <!-- STEP 2: UPLOAD -->
+    <div class="card" id="step2">
+      <div class="step-header">
+        <div class="step-num" id="s2num">2</div>
+        <div><div class="step-title">Upload Additional Files</div></div>
+        <span class="step-badge sb-pending" id="s2badge">Optional</span>
+      </div>
+      <div class="upload-drop" id="uploadDrop">
+        <div class="upload-drop-text">📂 Click or drag video files here to add to project</div>
+        <input type="file" id="uploadInput" accept="video/*" multiple style="display:none">
+      </div>
+    </div>
+
+    <!-- STEP 3: COMBINE -->
+    <div class="card" id="step3">
+      <div class="step-header">
+        <div class="step-num" id="s3num">3</div>
+        <div>
+          <div class="step-title">Combine &amp; Normalize</div>
+          <div style="font-family:'DM Mono',monospace;font-size:.58rem;color:var(--muted2);">GPU-accelerated · AAC-LC 48kHz 192kbps stereo · EBU R128 loudnorm</div>
+        </div>
+        <span class="step-badge sb-pending" id="s3badge">Waiting</span>
+      </div>
+      <div class="combine-options" id="combineArea">
+        <div class="info-box">
+          <div class="ib-title">Audio Normalization Standard</div>
+          <div class="ib-row"><span>Codec</span><span class="ib-val">AAC-LC</span></div>
+          <div class="ib-row"><span>Sample rate</span><span class="ib-val">48,000 Hz</span></div>
+          <div class="ib-row"><span>Channels</span><span class="ib-val">Stereo (2ch)</span></div>
+          <div class="ib-row"><span>Bitrate</span><span class="ib-val">192 kbps</span></div>
+          <div class="ib-row"><span>Loudness</span><span class="ib-val">EBU R128 / -16 LUFS</span></div>
+          <div style="margin-top:6px;color:var(--muted);font-size:.56rem;">Compatible with YouTube · TikTok · Instagram · Facebook · X</div>
+        </div>
+        <div id="combineOrderNote" style="font-family:'DM Mono',monospace;font-size:.6rem;color:var(--muted2);">Videos will be combined in tray order. Drag to reorder.</div>
+        <div style="display:flex;gap:10px;">
+          <button class="btn-acc2" id="combineBtn" disabled>⚡ COMBINE + NORMALIZE</button>
+          <button class="btn-ghost" id="skipCombineBtn">Skip — just normalize single video</button>
+        </div>
+        <div class="proc-bar-wrap" id="combineProgress">
+          <div class="proc-bar"><div class="proc-bar-fill" id="combineFill" style="width:0%"></div></div>
+          <div class="proc-log" id="combineLog"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 4: COMPRESS -->
+    <div class="card" id="step4" style="opacity:.5;pointer-events:none;">
+      <div class="step-header">
+        <div class="step-num" id="s4num">4</div>
+        <div>
+          <div class="step-title">Compress for Copyright Office</div>
+          <div style="font-family:'DM Mono',monospace;font-size:.58rem;color:var(--muted2);">Only needed if file exceeds 450 MB · GPU-accelerated</div>
+        </div>
+        <span class="step-badge sb-pending" id="s4badge">Waiting</span>
+      </div>
+      <div id="compressArea">
+        <div class="info-box" id="sizeCheckBox" style="margin-bottom:12px;">
+          <div class="ib-title">File Size Check</div>
+          <div id="sizeCheckContent" style="color:var(--muted2);">Complete step 3 first</div>
+        </div>
+        <div id="compressOptions" style="display:none;">
+          <div style="margin-bottom:12px;">
+            <div style="font-family:'DM Mono',monospace;font-size:.58rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2);margin-bottom:7px;">Resolution</div>
+            <div class="chips" id="resChips">
+              <button class="chip" data-scale="">Original</button>
+              <button class="chip active" data-scale="1280:-2">720p</button>
+              <button class="chip" data-scale="854:-2">480p</button>
+            </div>
+          </div>
+          <div style="margin-bottom:12px;">
+            <div style="font-family:'DM Mono',monospace;font-size:.58rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2);margin-bottom:7px;">Speed</div>
+            <div class="chips" id="speedChips">
+              <button class="chip" data-fast="false">Quality</button>
+              <button class="chip active" data-fast="true">Fast</button>
+            </div>
+          </div>
+          <div class="compress-row" style="margin-bottom:12px;">
+            <div style="font-family:'DM Mono',monospace;font-size:.6rem;color:var(--muted2);white-space:nowrap;">Quality (CRF)</div>
+            <input type="range" id="cqSlider" min="20" max="40" value="28" step="1">
+            <div style="font-family:'DM Mono',monospace;font-size:.6rem;color:var(--text);min-width:20px;" id="cqVal">28</div>
+          </div>
+          <div class="range-labels" style="width:160px;margin-left:130px;margin-bottom:12px;"><span>Best quality</span><span>Smallest</span></div>
+        </div>
+        <button class="btn-acc" id="compressBtn" disabled style="display:none;">⚡ COMPRESS</button>
+        <div class="proc-bar-wrap" id="compressProgress">
+          <div class="proc-bar"><div class="proc-bar-fill" id="compressFill" style="width:0%"></div></div>
+          <div class="proc-log" id="compressLog"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 5: EXPORT -->
+    <div class="card" id="step5" style="opacity:.5;pointer-events:none;">
+      <div class="step-header">
+        <div class="step-num" id="s5num">5</div>
+        <div><div class="step-title">Export / Download</div></div>
+        <span class="step-badge sb-pending" id="s5badge">Waiting</span>
+      </div>
+      <div id="exportArea">
+        <div style="font-family:'DM Mono',monospace;font-size:.62rem;color:var(--muted2);">Complete the steps above to export your final file.</div>
+      </div>
+    </div>
+  `;
+
+  bindClientName();
+  bindStep1();
+  bindStep2();
+  bindStep3();
+  renderTray();
+}
+
+function bindClientName(){
+  const inp=document.getElementById('clientNameInput');
+  if(!inp)return;
+  let saveTimer=null;
+  inp.addEventListener('input',()=>{
+    clearTimeout(saveTimer);
+    saveTimer=setTimeout(async()=>{
+      const client_name=inp.value.trim();
+      currentProject.client_name=client_name;
+      await fetch(`/api/projects/${currentProject.id}/client-name`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({client_name})
+      });
+      const saved=document.getElementById('clientNameSaved');
+      if(saved){ saved.style.opacity='1'; setTimeout(()=>saved.style.opacity='0',1200); }
+      renderTray();  // video card titles include the client name — refresh them
+    },600);
+  });
+}
+
+// The shared "Client - Date - Title" label used for both the on-screen
+// video card title and (via build_rights_filename server-side) the saved
+// filename — kept in one place so the two never drift apart from each other.
+function videoDisplayTitle(v){
+  const client=(currentProject&&currentProject.client_name)||(currentProject&&currentProject.name)||'';
+  const date=v.date||'';
+  const title=v.title||'Untitled';
+  if(!client && !date) return title;
+  return [client,date,title].filter(Boolean).join(' - ');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  STEP 1 — URL FETCH
+// ═══════════════════════════════════════════════════════════
+function bindStep1(){
+  document.getElementById('qualChips').addEventListener('click',e=>{
+    const b=e.target.closest('.chip');if(!b)return;
+    document.querySelectorAll('#qualChips .chip').forEach(c=>c.classList.remove('active'));
+    b.classList.add('active');dlQuality=b.dataset.q;
+  });
+  document.getElementById('previewDatesBtn').onclick=async()=>{
+    const raw=document.getElementById('urlInput').value;
+    const urls=raw.split('\n').map(u=>u.trim()).filter(u=>u.startsWith('http'));
+    const resultsEl=document.getElementById('urlPreviewResults');
+    if(!urls.length)return;
+    const btn=document.getElementById('previewDatesBtn');
+    btn.disabled=true; btn.textContent='Checking...';
+    resultsEl.style.display='block';
+    resultsEl.innerHTML='<div style="font-family:\'DM Mono\',monospace;font-size:.62rem;color:var(--muted2);padding:8px 0;">Looking up dates — no video is downloaded for this...</div>';
+    try{
+      const r=await fetch('/api/preview-metadata',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({urls})});
+      const d=await r.json();
+      resultsEl.innerHTML=(d.results||[]).map(res=>{
+        const dateHtml=res.date
+          ? `<span style="color:var(--acc3);font-weight:600;">${escHtml(res.date)}</span>`
+          : `<span style="color:var(--muted);">date unknown</span>`;
+        const errHtml=res.error
+          ? ` <span style="color:var(--danger);">— ${escHtml(res.error.slice(0,90))}</span>`
+          : '';
+        return `<div style="padding:5px 0;border-bottom:1px solid var(--border);font-family:'DM Mono',monospace;font-size:.65rem;display:flex;gap:8px;align-items:baseline;">
+          ${dateHtml}
+          <span style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(res.title||res.url)}</span>${errHtml}
+        </div>`;
+      }).join('') || '<div style="color:var(--muted2);font-family:\'DM Mono\',monospace;font-size:.62rem;">No results.</div>';
+    }catch(e){
+      resultsEl.innerHTML=`<div style="color:var(--danger);font-family:'DM Mono',monospace;font-size:.62rem;">Preview failed: ${escHtml(String(e))}</div>`;
+    }
+    btn.disabled=false; btn.textContent='🔍 Preview Dates';
+  };
+  document.getElementById('fetchBtn').onclick=async()=>{
+    const raw=document.getElementById('urlInput').value;
+    const urls=raw.split('\n').map(u=>u.trim()).filter(u=>u.startsWith('http'));
+    if(!urls.length)return;
+    document.getElementById('urlInput').value='';
+    const previewEl=document.getElementById('urlPreviewResults');
+    if(previewEl){ previewEl.style.display='none'; previewEl.innerHTML=''; }
+    // Disable button while fetching to avoid double-submits
+    const fetchBtn=document.getElementById('fetchBtn');
+    fetchBtn.disabled=true; fetchBtn.textContent='Queuing...';
+    const r=await fetch(`/api/projects/${currentProject.id}/fetch`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({urls,quality:dlQuality})
+    });
+    const d=await r.json();
+    fetchBtn.disabled=false; fetchBtn.textContent='⬇ FETCH URLS';
+    if(d.dl_ids){
+      // Immediately inject placeholder cards for each queued download so the
+      // user sees progress right away, before the server adds them to project.videos
+      if(!currentProject.videos) currentProject.videos=[];
+      d.dl_ids.forEach((id,i)=>{
+        // Add a temporary placeholder entry so makeVideoCard renders it
+        const placeholder={
+          id, type:'download', path:'', filename:'',
+          title: urls[i] || 'Downloading...', platform:'', date:'',
+          thumbnail:'', size_bytes:0, duration_s:0, width:0, height:0, url: urls[i]||''
+        };
+        // Only add if not already present (avoid duplicates on re-render)
+        if(!currentProject.videos.find(v=>v.id===id)){
+          currentProject.videos.push(placeholder);
+        }
+        startDlPoller(id);
+      });
+      renderTray();
+      updateSidebarMeta();
+    }
+  };
+}
+
+function startDlPoller(dl_id){
+  if(dlPollers[dl_id])return;
+  dlPollers[dl_id]=setInterval(async()=>{
+    const r=await fetch(`/api/dl/${dl_id}`);
+    const d=await r.json();
+    updateVideoCard(dl_id, d);
+    if(d.status==='done'||d.status==='error'){
+      clearInterval(dlPollers[dl_id]);
+      delete dlPollers[dl_id];
+      await refreshProject();
+      renderTray();
+      updateCombineBtn();
+    }
+  },900);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  VIDEO TRAY
+// ═══════════════════════════════════════════════════════════
+function renderTray(){
+  const tray=document.getElementById('videoTray');
+  const meta=document.getElementById('trayMeta');
+  if(!tray)return;
+  const vids=currentProject?.videos||[];
+  if(!vids.length){
+    tray.innerHTML='<div class="tray-empty">No videos yet — fetch from URLs above or upload files below</div>';
+    meta.textContent='';
+    updateCombineBtn();
+    return;
+  }
+  const totalSize=vids.reduce((a,v)=>a+(v.size_bytes||0),0);
+  const totalDur=vids.reduce((a,v)=>a+(v.duration_s||0),0);
+  meta.innerHTML=`<span>${vids.length} video(s) · ${fmt(totalSize)} total · ${fmtDur(totalDur)}</span>`;
+  tray.innerHTML='';
+  vids.forEach(v=>tray.appendChild(makeVideoCard(v)));
+  updateCombineBtn();
+}
+
+function makeVideoCard(v){
+  const el=document.createElement('div');
+  el.className='video-card';
+  el.id='vc-'+v.id;
+  el.draggable=true;
+
+  const isDownloading=!!dlPollers[v.id];
+  const statusText = isDownloading?'Downloading... 0%':'Ready';
+  const statusClass = isDownloading?'dl':'done';
+  const thumbHtml = v.thumbnail
+    ? `<img class="vc-thumb" src="${v.thumbnail}" onerror="this.style.display='none'" alt="">`
+    : `<div class="vc-thumb-placeholder">${v.platform==='upload'?'📂':'🎬'}</div>`;
+
+  const isMuted=mutedVideoIds.has(v.id);
+  if(isMuted) el.classList.add('muted');
+
+  el.innerHTML=`
+    <div class="vc-drag" title="Drag to reorder">⠿</div>
+    ${thumbHtml}
+    <div class="vc-info">
+      <div class="vc-title" title="${escHtml(videoDisplayTitle(v))}">${escHtml(videoDisplayTitle(v))}${isMuted?' <span class="vc-muted-tag">MUTED</span>':''}</div>
+      <div class="vc-meta">${v.platform||''} ${v.size_bytes?'· '+fmt(v.size_bytes):''} ${v.duration_s?'· '+fmtDur(v.duration_s):''}</div>
+      <div class="vc-progress" id="vcp-wrap-${v.id}" style="${isDownloading?'':'display:none'}"><div class="vc-progress-fill" id="vcp-${v.id}" style="width:0%"></div></div>
+      <div class="vc-status ${statusClass}" id="vcs-${v.id}">${statusText}</div>
+      <div class="vc-error" id="vce-${v.id}" style="display:none;"></div>
+    </div>
+    <div class="vc-actions">
+      <button class="vc-btn mute-btn${isMuted?' active':''}" data-vid="${v.id}" title="${isMuted?'Unmute this clip in the combined video':'Mute this clip in the combined video (e.g. royalty-free music that cannot go in the submission) — the rest keep their sound'}">${isMuted?'🔇':'🔊'}</button>
+      <button class="vc-btn dl-btn${isDownloading?' disabled':''}" data-dlid="${v.id}" title="Download this video individually">⬇</button>
+      <button class="vc-btn del-btn" data-vid="${v.id}" title="Remove from project">✕</button>
+    </div>
+  `;
+
+  // Individual download
+  el.querySelector('.dl-btn').addEventListener('click',async()=>{
+    window.location.href=`/api/dl/${v.id}/download`;
+  });
+
+  // Mute toggle — only affects the COMBINED output; doesn't touch the source file
+  el.querySelector('.mute-btn').addEventListener('click',()=>{
+    if(mutedVideoIds.has(v.id)) mutedVideoIds.delete(v.id);
+    else mutedVideoIds.add(v.id);
+    renderTray();
+  });
+
+  // Remove
+  el.querySelector('.del-btn').addEventListener('click',async()=>{
+    await fetch(`/api/projects/${currentProject.id}/videos/${v.id}`,{method:'DELETE'});
+    mutedVideoIds.delete(v.id);
+    await refreshProject();
+    renderTray();
+    updateSidebarMeta();
+  });
+
+  // Drag reorder
+  el.addEventListener('dragstart',e=>{e.dataTransfer.setData('text/plain',v.id);el.style.opacity='.4';});
+  el.addEventListener('dragend',()=>{el.style.opacity='';});
+  el.addEventListener('dragover',e=>{e.preventDefault();el.style.borderColor='var(--acc)';});
+  el.addEventListener('dragleave',()=>{el.style.borderColor='';});
+  el.addEventListener('drop',async e=>{
+    e.preventDefault();el.style.borderColor='';
+    const dragId=e.dataTransfer.getData('text/plain');
+    if(dragId===v.id)return;
+    const vids=currentProject.videos;
+    const fromIdx=vids.findIndex(x=>x.id===dragId);
+    const toIdx=vids.findIndex(x=>x.id===v.id);
+    if(fromIdx<0||toIdx<0)return;
+    const [item]=vids.splice(fromIdx,1);
+    vids.splice(toIdx,0,item);
+    renderTray();
+  });
+
+  return el;
+}
+
+function updateVideoCard(dl_id, d){
+  const el=document.getElementById('vc-'+dl_id);
+  if(!el)return;
+  const fill=document.getElementById('vcp-'+dl_id);
+  const wrap=document.getElementById('vcp-wrap-'+dl_id);
+  const stat=document.getElementById('vcs-'+dl_id);
+  const errEl=document.getElementById('vce-'+dl_id);
+  if(fill) fill.style.width=(d.progress||0)+'%';
+  if(wrap) wrap.style.display=(d.status==='running'||d.status==='queued')?'':'none';
+  if(stat){
+    if(d.status==='running'||d.status==='queued'){
+      stat.textContent=`Downloading... ${d.progress||0}% ${d.speed||''}`;
+      stat.className='vc-status dl';
+      if(errEl) errEl.style.display='none';
+    } else if(d.status==='done'){
+      stat.textContent='Ready';
+      stat.className='vc-status done';
+      if(errEl) errEl.style.display='none';
+      // Update title and meta now that we have real info
+      const titleEl=el.querySelector('.vc-title');
+      const metaEl=el.querySelector('.vc-meta');
+      if(titleEl && d.title) titleEl.textContent=videoDisplayTitle(d);
+      if(metaEl) metaEl.textContent=`${d.platform||''} ${d.file_size?'· '+fmt(d.file_size):''} ${d.duration_s?'· '+fmtDur(d.duration_s):''}`;
+      // Re-enable the individual download button
+      const dlBtn=el.querySelector('.dl-btn');
+      if(dlBtn) dlBtn.classList.remove('disabled');
+    } else if(d.status==='error'){
+      stat.textContent='Error — download failed';
+      stat.className='vc-status err';
+      if(wrap) wrap.style.display='none';
+      // Surface the actual reason instead of just a generic label — the
+      // backend already captured it (log_tail's last line is always the
+      // "Error: ..." message run_download recorded), it just wasn't shown.
+      if(errEl){
+        const tail=(d.log_tail||[]).filter(Boolean);
+        const reason=tail.length?tail[tail.length-1]:'';
+        if(reason){ errEl.textContent=reason; errEl.style.display='block'; }
+        else{ errEl.style.display='none'; }
+      }
+    }
+  }
+}
+
+function updateCombineBtn(){
+  const btn=document.getElementById('combineBtn');
+  const skipBtn=document.getElementById('skipCombineBtn');
+  if(!btn)return;
+  const vids=currentProject?.videos||[];
+  const ready=vids.filter(v=>!dlPollers[v.id]);
+
+  // Single video — skip normalize entirely, go straight to size check
+  if(ready.length===1){
+    btn.style.display='none';
+    if(skipBtn){skipBtn.style.display='block';skipBtn.textContent='⚡ CONTINUE TO SIZE CHECK';}
+  } else if(ready.length===0){
+    btn.style.display='block';
+    btn.disabled=true;
+    btn.textContent='⚡ COMBINE + NORMALIZE';
+    if(skipBtn)skipBtn.style.display='none';
+  } else {
+    btn.style.display='block';
+    btn.disabled=false;
+    btn.textContent=`⚡ COMBINE ${ready.length} VIDEOS + NORMALIZE`;
+    if(skipBtn)skipBtn.style.display='none';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  STEP 2 — UPLOAD
+// ═══════════════════════════════════════════════════════════
+function bindStep2(){
+  const drop=document.getElementById('uploadDrop');
+  const input=document.getElementById('uploadInput');
+  drop.addEventListener('click',()=>input.click());
+  drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('over');});
+  drop.addEventListener('dragleave',()=>drop.classList.remove('over'));
+  drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('over');uploadFiles(e.dataTransfer.files);});
+  input.addEventListener('change',e=>uploadFiles(e.target.files));
+}
+
+async function uploadFiles(files){
+  for(const f of files){
+    const fd=new FormData();
+    fd.append('file',f,f.name);
+    const r=await fetch(`/api/projects/${currentProject.id}/upload`,{method:'POST',body:fd});
+    const v=await r.json();
+    if(!currentProject.videos)currentProject.videos=[];
+    currentProject.videos.push(v);
+    renderTray();
+    updateSidebarMeta();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  STEP 3 — COMBINE + NORMALIZE
+// ═══════════════════════════════════════════════════════════
+function bindStep3(){
+  document.getElementById('combineBtn').addEventListener('click',()=>startCombine(false));
+  const skipBtn=document.getElementById('skipCombineBtn');
+  if(skipBtn)skipBtn.addEventListener('click',()=>{
+    const vids=(currentProject?.videos||[]).filter(v=>!dlPollers[v.id]);
+    if(vids.length===1){
+      // Single video — skip normalize entirely, pass file directly to step 4
+      const vid=vids[0];
+      currentFinalPath=vid.path;
+      document.getElementById('s3badge').textContent='Skipped';
+      document.getElementById('s3badge').className='step-badge sb-pending';
+      // Fake a proc result so unlockStep4 works
+      const fakeJob={file_size:vid.size_bytes, output_path:vid.path, needs_compress:vid.size_bytes>450*1024*1024};
+      unlockStep4Direct(fakeJob);
+    } else {
+      startCombine(true);
+    }
+  });
+}
+
+function unlockStep4Direct(fakeJob){
+  // Same as onCombineDone but without a real proc_id
+  currentFinalPath=fakeJob.output_path;
+  unlockStep4(fakeJob);
+}
+
+let currentCombineProcId=null;
+let currentFinalPath=null;
+
+async function startCombine(singleOnly){
+  const vids=currentProject.videos.filter(v=>!dlPollers[v.id]);
+  const vidIds=singleOnly?[vids[0].id]:vids.map(v=>v.id);
+  const mutedIds=vidIds.filter(id=>mutedVideoIds.has(id));
+
+  document.getElementById('combineBtn').disabled=true;
+  document.getElementById('combineProgress').classList.add('show');
+  document.getElementById('s3badge').textContent='Processing';
+  document.getElementById('s3badge').className='step-badge sb-active';
+  if(mutedIds.length) addLog('combineLog',`Muting audio on ${mutedIds.length} clip(s) — the rest keep their sound.`,'lw');
+
+  const r=await fetch(`/api/projects/${currentProject.id}/combine`,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({video_ids:vidIds,muted_ids:mutedIds})
+  });
+  const d=await r.json();
+  if(d.error){addLog('combineLog',d.error,'le');return;}
+  currentCombineProcId=d.proc_id;
+  pollProc(d.proc_id,'combineFill','combineLog',onCombineDone);
+}
+
+function onCombineDone(j){
+  document.getElementById('s3badge').textContent='Done';
+  document.getElementById('s3badge').className='step-badge sb-complete';
+  document.getElementById('s3num').className='step-num done';
+  currentFinalPath=j.output_path;
+  unlockStep4(j);
+}
+
+function unlockStep4(j){
+  const step4=document.getElementById('step4');
+  step4.style.opacity='';
+  step4.style.pointerEvents='';
+
+  const fileSize=j.file_size||0;
+  const needsCompress=fileSize>450*1024*1024;
+  const sizeStr=fmt(fileSize);
+
+  let sizeHtml;
+  if(needsCompress){
+    sizeHtml=`<span class="size-over">⚠ ${sizeStr} — exceeds 450 MB limit. Compression required.</span>`;
+  } else {
+    sizeHtml=`<span class="size-ok">✓ ${sizeStr} — under 450 MB. No compression needed.</span>`;
+  }
+  document.getElementById('sizeCheckContent').innerHTML=sizeHtml;
+
+  if(!needsCompress){
+    document.getElementById('s4badge').textContent='Skipped';
+    document.getElementById('s4badge').className='step-badge sb-pending';
+    document.getElementById('compressBtn').style.display='none';
+    // For single video skip, use a fake proc_id that serves the file directly
+    unlockStep5Direct(j);
+  } else {
+    document.getElementById('compressOptions').style.display='block';
+    document.getElementById('compressBtn').style.display='block';
+    bindCompressOptions();
+    document.getElementById('compressBtn').disabled=false;
+    document.getElementById('s4badge').textContent='Action Needed';
+    document.getElementById('s4badge').className='step-badge sb-active';
+
+    const slider=document.getElementById('cqSlider');
+    const val=document.getElementById('cqVal');
+    slider.addEventListener('input',()=>{compressQuality=parseInt(slider.value);val.textContent=slider.value;});
+    document.getElementById('compressBtn').onclick=()=>startCompress(currentFinalPath);
+    step4.scrollIntoView({behavior:'smooth',block:'start'});
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  STEP 4 — COMPRESS
+// ═══════════════════════════════════════════════════════════
+
+
+let currentCompressProcId=null;
+let compressScale='1280:-2';
+let compressFast=true;
+
+function bindCompressOptions(){
+  const resChips=document.getElementById('resChips');
+  const speedChips=document.getElementById('speedChips');
+  if(resChips){
+    resChips.addEventListener('click',e=>{
+      const b=e.target.closest('.chip');if(!b)return;
+      resChips.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+      b.classList.add('active');compressScale=b.dataset.scale;
+    });
+  }
+  if(speedChips){
+    speedChips.addEventListener('click',e=>{
+      const b=e.target.closest('.chip');if(!b)return;
+      speedChips.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+      b.classList.add('active');compressFast=b.dataset.fast==='true';
+    });
+  }
+}
+
+async function startCompress(srcPath){
+  document.getElementById('compressBtn').disabled=true;
+  document.getElementById('compressProgress').classList.add('show');
+  document.getElementById('s4badge').textContent='Compressing';
+  bindCompressOptions();
+  const scaleLabel=compressScale==='1280:-2'?'720p':compressScale==='854:-2'?'480p':'Original';
+  addLog('compressLog',`Compressing at ${scaleLabel}, ${compressFast?'fast':'quality'} mode...`,'lw');
+  const r=await fetch(`/api/projects/${currentProject.id}/compress`,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({source_path:srcPath,quality:compressQuality,scale:compressScale,fast:compressFast})
+  });
+  const d=await r.json();
+  if(d.error){addLog('compressLog',d.error,'le');return;}
+  currentCompressProcId=d.proc_id;
+  pollProc(d.proc_id,'compressFill','compressLog',onCompressDone);
+}
+
+function unlockStep5Direct(j){
+  // No proc_id — file is the original, just go straight to export UI
+  const step5=document.getElementById('step5');
+  step5.style.opacity='';
+  step5.style.pointerEvents='';
+  document.getElementById('s5badge').textContent='Ready';
+  document.getElementById('s5badge').className='step-badge sb-active';
+  document.getElementById('s5num').className='step-num done';
+  step5.scrollIntoView({behavior:'smooth',block:'start'});
+
+  const size=j.file_size||0;
+  const underLimit=size<=450*1024*1024;
+  document.getElementById('exportArea').innerHTML=`
+    <div class="final-card">
+      <div class="final-title">✓ File Ready to Save</div>
+      <div class="final-meta">
+        Size: <span class="${sizeClass(size)}">${fmt(size)}</span><br>
+        Status: <span class="${underLimit?'size-ok':'size-over'}">${underLimit?'Under 450 MB — OK for Copyright Office upload':'Exceeds limit'}</span><br>
+        Project: ${currentProject.name}
+      </div>
+      <div style="font-family:'DM Mono',monospace;font-size:.6rem;color:var(--muted2);margin-bottom:14px;line-height:1.8;background:var(--s3);border-radius:var(--r);padding:10px 12px;">
+        📁 A folder picker will open. Choose where to save.<br>
+        All temporary working files will be deleted automatically after saving.<br>
+        Only your final <strong style="color:var(--text);">${currentProject.name}.mp4</strong> will be kept.
+      </div>
+      <button class="btn-download-final" id="exportBtn">
+        📁 CHOOSE SAVE LOCATION &amp; EXPORT
+      </button>
+      <div id="exportStatus" style="margin-top:10px;font-family:'DM Mono',monospace;font-size:.62rem;display:none;"></div>
+    </div>
+  `;
+  document.getElementById('exportBtn').addEventListener('click', function(){ doExportDirect(j.output_path, this); });
+}
+
+async function doExportDirect(srcPath, btn){
+  // For single video bypass — compress first then export via a quick compress job at CRF 0 (lossless copy)
+  // Actually just trigger a compress job with copy codec to get a proc_id for the export endpoint
+  btn.disabled=true;
+  btn.textContent='Preparing export...';
+  try{
+    const r=await fetch(`/api/projects/${currentProject.id}/compress`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({source_path:srcPath, quality:18, copy_only:true})
+    });
+    const d=await r.json();
+    if(d.error){throw new Error(d.error);}
+    // Poll until done then export
+    await new Promise(resolve=>{
+      const iv=setInterval(async()=>{
+        const r2=await fetch(`/api/proc/${d.proc_id}`);
+        const j2=await r2.json();
+        if(j2.status==='done'){clearInterval(iv);resolve(j2);}
+        else if(j2.status==='error'){clearInterval(iv);resolve(null);}
+      },800);
+    });
+    btn.textContent='📁 CHOOSE SAVE LOCATION & EXPORT';
+    btn.disabled=false;
+    btn.onclick=()=>doExport(d.proc_id, btn);
+    btn.click();
+  }catch(e){
+    btn.disabled=false;
+    btn.textContent='📁 CHOOSE SAVE LOCATION & EXPORT';
+  }
+}
+
+function onCompressDone(j){
+  document.getElementById('s4badge').textContent='Done';
+  document.getElementById('s4badge').className='step-badge sb-complete';
+  document.getElementById('s4num').className='step-num done';
+  currentFinalPath=j.output_path;
+  unlockStep5(currentCompressProcId);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  STEP 5 — EXPORT
+// ═══════════════════════════════════════════════════════════
+function unlockStep5(proc_id){
+  const step5=document.getElementById('step5');
+  step5.style.opacity='';
+  step5.style.pointerEvents='';
+  document.getElementById('s5badge').textContent='Ready';
+  document.getElementById('s5badge').className='step-badge sb-active';
+  document.getElementById('s5num').className='step-num done';
+  step5.scrollIntoView({behavior:'smooth',block:'start'});
+
+  fetch(`/api/proc/${proc_id}`).then(r=>r.json()).then(j=>{
+    const size=j.file_size||0;
+    const sizeStr=fmt(size);
+    const underLimit=size<=450*1024*1024;
+    document.getElementById('exportArea').innerHTML=`
+      <div class="final-card">
+        <div class="final-title">✓ File Ready to Save</div>
+        <div class="final-meta">
+          Size: <span class="${sizeClass(size)}">${sizeStr}</span><br>
+          Status: <span class="${underLimit?'size-ok':'size-over'}">${underLimit?'Under 450 MB — OK for Copyright Office upload':'Exceeds limit — re-compress at higher CRF'}</span><br>
+          Audio: AAC-LC · 48kHz · Stereo · 192kbps<br>
+          Project: ${currentProject.name}
+        </div>
+        <div style="font-family:'DM Mono',monospace;font-size:.6rem;color:var(--muted2);margin-bottom:14px;line-height:1.8;background:var(--s3);border-radius:var(--r);padding:10px 12px;">
+          📁 A folder picker will open. Choose where to save your file.<br>
+          All temporary working files are deleted automatically after saving.<br>
+          Only your final <strong style="color:var(--text);">${currentProject.name}.mp4</strong> will be kept.
+        </div>
+        <button class="btn-download-final" id="exportBtn" onclick="doExport('${proc_id}', this)">
+          📁 CHOOSE SAVE LOCATION &amp; EXPORT
+        </button>
+        <div id="exportStatus" style="margin-top:10px;font-family:'DM Mono',monospace;font-size:.62rem;display:none;"></div>
+      </div>
+    `;
+  });
+}
+
+async function doExport(proc_id, btn){
+  btn.disabled=true;
+  btn.textContent='Opening folder picker...';
+  const statusEl=document.getElementById('exportStatus');
+  statusEl.style.display='block';
+  statusEl.style.color='var(--acc2)';
+  statusEl.textContent='Waiting for folder selection...';
+  try{
+    const r=await fetch(`/api/proc/${proc_id}/export`,{method:'POST'});
+    const d=await r.json();
+    if(d.error==='cancelled'){
+      btn.disabled=false;
+      btn.textContent='📁 CHOOSE SAVE LOCATION & EXPORT';
+      statusEl.textContent='Cancelled — pick a folder to save.';
+      statusEl.style.color='var(--muted2)';
+      return;
+    }
+    if(d.error){
+      statusEl.textContent='Error: '+d.error;
+      statusEl.style.color='var(--danger)';
+      btn.disabled=false;
+      btn.textContent='📁 CHOOSE SAVE LOCATION & EXPORT';
+      return;
+    }
+    btn.textContent='✓ SAVED';
+    btn.style.background='var(--success)';
+    statusEl.style.color='var(--success)';
+    statusEl.textContent=`Saved to: ${d.saved_to}  ·  All temp files deleted.`;
+    document.getElementById('sb-'+currentProject?.id)?.remove();
+    if(currentProject) closeProjectTab(currentProject.id);
+  }catch(e){
+    statusEl.textContent='Export failed: '+e.message;
+    statusEl.style.color='var(--danger)';
+    btn.disabled=false;
+    btn.textContent='📁 CHOOSE SAVE LOCATION & EXPORT';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  PROC POLLER
+// ═══════════════════════════════════════════════════════════
+function pollProc(proc_id, fillId, logId, onDone){
+  let lastLogLen=0;
+  const iv=setInterval(async()=>{
+    const r=await fetch(`/api/proc/${proc_id}`);
+    const d=await r.json();
+    const fill=document.getElementById(fillId);
+    if(fill)fill.style.width=(d.progress||0)+'%';
+    if(d.log_tail){
+      d.log_tail.forEach(line=>{
+        const logEl=document.getElementById(logId);
+        if(!logEl)return;
+        const last=logEl.lastChild;
+        if(last&&last._proc&&(line.includes('time=')||line.includes('frame='))){last.textContent=line;}
+        else{
+          const p=document.createElement('p');
+          p.textContent=line;
+          p._proc=(line.includes('time=')||line.includes('frame='));
+          logEl.appendChild(p);
+          logEl.scrollTop=logEl.scrollHeight;
+        }
+      });
+    }
+    if(d.status==='done'){clearInterval(iv);onDone(d);}
+    else if(d.status==='error'){clearInterval(iv);addLog(logId,'Processing failed — check log','le');}
+  },900);
+}
+
+function addLog(logId, msg, cls=''){
+  const el=document.getElementById(logId);if(!el)return;
+  const p=document.createElement('p');p.textContent=msg;if(cls)p.className=cls;
+  el.appendChild(p);el.scrollTop=el.scrollHeight;
+}
+
+function updateSidebarMeta(){
+  const el=document.getElementById('sb-'+currentProject?.id);
+  if(!el)return;
+  el.querySelector('.proj-meta').textContent=`${currentProject?.videos?.length||0} video(s) · ${timeAgo(currentProject?.created)}`;
+}
+
+
+// ── BATCH ─────────────────────────────────────────────────────────────────────
+let batchItems=[];
+let batchFolder='';
+let batchQuality='best';
+let batchScale='1280:-2';
+let batchFast=true;
+let currentBatchId=null;
+let batchPollInterval=null;
+
+function initBatch(){
+  document.getElementById('addBatchUrlsBtn')?.addEventListener('click',()=>{
+    const raw=document.getElementById('batchUrlInput').value;
+    const urls=raw.split('\n').map(u=>u.trim()).filter(u=>u.startsWith('http'));
+    if(!urls.length)return;
+    urls.forEach(url=>{
+      const name=url.split('/').filter(Boolean).pop().substring(0,60)||'Video';
+      batchItems.push({url,name});
+    });
+    document.getElementById('batchUrlInput').value='';
+    renderBatchQueue();
+  });
+  document.getElementById('clearBatchBtn')?.addEventListener('click',()=>{batchItems=[];renderBatchQueue();});
+  document.getElementById('batchPickFolderBtn')?.addEventListener('click',async()=>{
+    const r=await fetch('/api/batch/pick-folder',{method:'POST'});
+    const d=await r.json();
+    if(d.folder){batchFolder=d.folder;document.getElementById('batchFolderDisplay').textContent=d.folder;updateRunBatchBtn();}
+  });
+  document.getElementById('runBatchBtn')?.addEventListener('click',startBatch);
+  document.getElementById('batchQualChips')?.addEventListener('click',e=>{
+    const b=e.target.closest('.chip');if(!b)return;
+    document.querySelectorAll('#batchQualChips .chip').forEach(c=>c.classList.remove('active'));
+    b.classList.add('active');batchQuality=b.dataset.q;
+  });
+  document.getElementById('batchResChips')?.addEventListener('click',e=>{
+    const b=e.target.closest('.chip');if(!b)return;
+    document.querySelectorAll('#batchResChips .chip').forEach(c=>c.classList.remove('active'));
+    b.classList.add('active');batchScale=b.dataset.scale;
+  });
+  document.getElementById('batchSpeedChips')?.addEventListener('click',e=>{
+    const b=e.target.closest('.chip');if(!b)return;
+    document.querySelectorAll('#batchSpeedChips .chip').forEach(c=>c.classList.remove('active'));
+    b.classList.add('active');batchFast=b.dataset.fast==='true';
+  });
+}
+
+function renderBatchQueue(){
+  const card=document.getElementById('batchQueueCard');
+  const list=document.getElementById('batchQueueList');
+  const count=document.getElementById('batchQueueCount');
+  if(!card)return;
+  if(!batchItems.length){card.style.display='none';updateRunBatchBtn();return;}
+  card.style.display='block';
+  if(count)count.textContent=batchItems.length;
+  list.innerHTML='';
+  batchItems.forEach((item,i)=>{
+    const el=document.createElement('div');
+    el.style.cssText='display:flex;align-items:flex-start;gap:10px;padding:8px 10px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);';
+    el.innerHTML='<div style="flex:1;min-width:0;">'
+      +'<div style="font-size:.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted2);margin-bottom:4px;" title="'+item.url+'">'+item.url+'</div>'
+      +'<input style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:2px;padding:4px 8px;font-family:DM Sans,sans-serif;font-size:.78rem;color:var(--text);outline:none;" '
+      +'placeholder="Project name (e.g. Smith v. TikTok 001)" value="'+item.name+'" '
+      +'oninput="batchItems['+i+'].name=this.value">'
+      +'</div>'
+      +'<button onclick="batchItems.splice('+i+',1);renderBatchQueue();" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.9rem;margin-top:2px;flex-shrink:0;">✕</button>';
+    list.appendChild(el);
+  });
+  updateRunBatchBtn();
+}
+
+function updateRunBatchBtn(){
+  const btn=document.getElementById('runBatchBtn');
+  if(!btn)return;
+  btn.disabled=!batchItems.length||!batchFolder;
+}
+
+async function startBatch(){
+  const btn=document.getElementById('runBatchBtn');
+  btn.disabled=true;btn.textContent='Running...';btn.style.background='';
+  if(batchPollInterval){clearInterval(batchPollInterval);batchPollInterval=null;}
+  const statusEl=document.getElementById('batchStatus');
+  statusEl.style.display='block';statusEl.innerHTML='Starting batch...';
+  const r=await fetch('/api/batch/start',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({items:batchItems.map(it=>({...it,quality:batchQuality,scale:batchScale,fast:batchFast})),save_folder:batchFolder})
+  });
+  const d=await r.json();
+  if(d.error){statusEl.innerHTML='Error: '+d.error;btn.disabled=false;btn.textContent='RUN BATCH OVERNIGHT';return;}
+  currentBatchId=d.batch_id;
+  batchPollInterval=setInterval(pollBatch,2000);
+}
+
+async function pollBatch(){
+  if(!currentBatchId)return;
+  const r=await fetch('/api/batch/'+currentBatchId);
+  const d=await r.json();
+  const statusEl=document.getElementById('batchStatus');
+  const done=d.items.filter(i=>i.status==='done').length;
+  const errors=d.items.filter(i=>i.status==='error').length;
+  let html='<div style="color:var(--acc);margin-bottom:6px;">'+done+'/'+d.items.length+' complete'+(errors?' · '+errors+' errors':'')+'</div>';
+  d.items.forEach(item=>{
+    const color={queued:'var(--muted)',downloading:'var(--acc3)',compressing:'var(--acc2)',saving:'var(--acc2)',done:'var(--success)',error:'var(--danger)'}[item.status]||'var(--muted)';
+    const icon={queued:'○',downloading:'⬇',compressing:'⚡',saving:'💾',done:'✓',error:'✗'}[item.status]||'○';
+    // Once saved, saved_to already reflects the real "Name - Date - Title"
+    // filename the backend generated; before that, show name+title as the
+    // closest available preview (date isn't known until the download finishes).
+    const label=item.title?`${item.name} - ${item.title}`:(item.name||item.url.substring(0,50));
+    const saved=item.saved_to?(' → '+item.saved_to.split('\\').pop()):'';
+    const err=item.error?(' ('+item.error+')'):'';
+    html+='<div style="color:'+color+';">'+icon+' '+escHtml(label)+saved+err+'</div>';
+  });
+  statusEl.innerHTML=html;
+  if(d.status==='done'){
+    clearInterval(batchPollInterval);batchPollInterval=null;
+    const btn=document.getElementById('runBatchBtn');
+    btn.textContent='✓ BATCH COMPLETE — Add more URLs to run again';
+    btn.style.background='var(--success)';btn.disabled=true;
+    batchItems=[];renderBatchQueue();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  TOP NAV — Projects / Batch / Rights Manager are independent views
+// ═══════════════════════════════════════════════════════════
+function showView(view){
+  document.getElementById('view-projects').style.display = view==='projects' ? 'flex' : 'none';
+  document.getElementById('tab-batch').style.display = view==='batch' ? 'block' : 'none';
+  document.getElementById('tab-rights').style.display = view==='rights' ? 'block' : 'none';
+  document.querySelectorAll('.top-nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
+}
+document.querySelectorAll('.top-nav-btn').forEach(b=>b.addEventListener('click', ()=>showView(b.dataset.view)));
+
+// ═══════════════════════════════════════════════════════════
+//  RIGHTS MANAGER — independent pipeline: Import CSV → Review → Download → Complete
+//  Does not share state with the Project or Batch workflows above. Reuses
+//  the same output-folder picker endpoint pattern; everything else (CSV
+//  parsing, the filename helper, the download queue) is server-side only,
+//  reached through its own /api/rights/* routes.
+// ═══════════════════════════════════════════════════════════
+
+let rightsState = { batchId:null, rows:[], outputFolder:'', concurrency:3, poll:null, locked:false };
+
+function escHtml(s){
+  return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// JS mirror of squeeze.py's build_rights_filename() — used for instant
+// preview only. True duplicate-safe suffixes are only ever assigned
+// server-side at save time, once the real output folder contents are known.
+const RIGHTS_WIN_RESERVED = new Set([
+  'CON','PRN','AUX','NUL',
+  ...Array.from({length:9},(_,i)=>'COM'+(i+1)),
+  ...Array.from({length:9},(_,i)=>'LPT'+(i+1)),
+]);
+function rightsSanitizePart(s){
+  s = s || '';
+  s = s.replace(/[\r\n]+/g,' ');
+  s = s.replace(/[<>:"/\\|?*]/g,'');
+  s = s.replace(/\s+/g,' ').trim();
+  s = s.replace(/[. ]+$/,'');
+  return s;
+}
+function rightsBuildFilename(client,date,title,ext,maxLen=180){
+  client = rightsSanitizePart(client) || 'Unknown Client';
+  date = rightsSanitizePart(date) || 'Unknown Date';
+  title = rightsSanitizePart(title) || 'Untitled';
+  ext = ext.startsWith('.') ? ext.toLowerCase() : ('.'+ext.toLowerCase());
+  const prefix = `${client} - ${date} - `;
+  const room = Math.max(10, maxLen - prefix.length - ext.length);
+  if(title.length > room) title = title.slice(0,room).replace(/\s+$/,'');
+  let stem = (prefix+title).replace(/[. ]+$/,'');
+  if(RIGHTS_WIN_RESERVED.has(stem.toUpperCase())) stem = '_'+stem;
+  return stem+ext;
+}
+function rightsTitleOrFallback(row){
+  return row.title || row.description || `${row.platform||'Unknown'} ${row.id}`;
+}
+
+function initRights(){
+  const dz = document.getElementById('rightsDropZone');
+  const fileInput = document.getElementById('rightsFileInput');
+  dz.addEventListener('click', ()=>fileInput.click());
+  dz.addEventListener('dragover', e=>{e.preventDefault(); dz.classList.add('over');});
+  dz.addEventListener('dragleave', ()=>dz.classList.remove('over'));
+  dz.addEventListener('drop', e=>{
+    e.preventDefault(); dz.classList.remove('over');
+    const f = e.dataTransfer.files[0];
+    if(f) importRightsCsv(f);
+  });
+  fileInput.addEventListener('change', ()=>{ if(fileInput.files[0]) importRightsCsv(fileInput.files[0]); });
+  document.getElementById('rightsPickFolderBtn').addEventListener('click', pickRightsFolder);
+  document.getElementById('rightsStartBtn').addEventListener('click', startRightsBatch);
+  document.getElementById('rightsCancelBtn').addEventListener('click', cancelRightsBatch);
+  document.getElementById('rightsRetryBtn').addEventListener('click', retryRightsFailed);
+  document.getElementById('rightsResetBtn').addEventListener('click', resetRightsFlow);
+}
+
+async function importRightsCsv(file){
+  const errEl = document.getElementById('rightsImportError');
+  errEl.style.display='none';
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('default_client', document.getElementById('rightsDefaultClient').value.trim());
+  let d;
+  try{
+    const r = await fetch('/api/rights/import', {method:'POST', body:fd});
+    d = await r.json();
+  }catch(e){
+    errEl.textContent = 'Import failed: '+e; errEl.style.display='block'; return;
+  }
+  if(d.error){ errEl.textContent = d.error; errEl.style.display='block'; return; }
+
+  rightsState = { batchId:d.batch_id, rows:d.rows, outputFolder:'', concurrency:3, poll:null, locked:false };
+  document.getElementById('rightsReviewCard').style.display='block';
+  document.getElementById('rightsRunCard').style.display='block';
+  document.getElementById('rightsProgressCard').style.display='none';
+  document.getElementById('rightsDoneCard').style.display='none';
+  document.getElementById('rightsFolderDisplay').textContent='No folder selected yet';
+  renderRightsTable();
+}
+
+function rightsStatusClass(status){
+  const map = {'Ready':'ready','Needs Review':'review','Queued':'queued','Fetching Metadata':'metadata',
+    'Downloading':'downloading','Renaming':'renaming','Complete':'complete','Failed':'failed',
+    'Skipped':'skipped','Cancelled':'cancelled'};
+  return map[status] || 'skipped';
+}
+
+function renderRightsTable(){
+  const tbody = document.getElementById('rightsTableBody');
+  const editable = !rightsState.locked;
+  tbody.innerHTML = rightsState.rows.map((row,idx)=>{
+    const titleVal = row.title || row.description || '';
+    const msgs = [...(row.errors||[]), ...(row.status!=='Needs Review'?(row.warnings||[]):[])];
+    const msgHtml = msgs.length ? `<div style="color:${row.errors&&row.errors.length?'var(--danger)':'var(--acc2)'};font-size:.58rem;margin-top:3px;">${escHtml(msgs.join('; '))}</div>` : '';
+    return `<tr style="border-bottom:1px solid var(--border);${row.duplicate_of?'opacity:.65;':''}">
+      <td style="padding:6px;">${row.row_number}</td>
+      <td style="padding:6px;"><input class="rt-cell-input" data-f="client" data-i="${idx}" value="${escHtml(row.client)}" ${editable?'':'disabled'}></td>
+      <td style="padding:6px;white-space:nowrap;">${escHtml(row.platform)||'<span style="color:var(--muted)">—</span>'}</td>
+      <td style="padding:6px;"><input class="rt-cell-input" style="width:96px;" data-f="date" data-i="${idx}" value="${escHtml(row.date)}" ${editable?'':'disabled'}></td>
+      <td style="padding:6px;min-width:180px;"><input class="rt-cell-input" data-f="title" data-i="${idx}" value="${escHtml(titleVal)}" ${editable?'':'disabled'}></td>
+      <td style="padding:6px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(row.url)}">${escHtml(row.url)}</td>
+      <td style="padding:6px;font-family:'DM Mono',monospace;font-size:.62rem;color:var(--muted2);" id="rt-fname-${idx}">${escHtml(row.proposed_filename)}</td>
+      <td style="padding:6px;"><span class="rt-badge ${rightsStatusClass(row.status)}">${escHtml(row.status)}</span>${msgHtml}${row.error?`<div style="color:var(--danger);font-size:.58rem;margin-top:3px;">${escHtml(row.error)}</div>`:''}</td>
+      <td style="padding:6px;text-align:center;">${editable?`<input type="checkbox" data-inc="${idx}" ${row.include?'checked':''}>`:(row.include?'✓':'—')}</td>
+    </tr>`;
+  }).join('');
+
+  tbody.querySelectorAll('input[data-f]').forEach(inp=>{
+    inp.addEventListener('input', onRightsFieldInput);
+    inp.addEventListener('blur', onRightsFieldBlur);
+  });
+  tbody.querySelectorAll('input[data-inc]').forEach(cb=>{
+    cb.addEventListener('change', e=>{
+      rightsState.rows[parseInt(e.target.dataset.inc)].include = e.target.checked;
+      updateRightsSummary(); updateRightsStartEnabled();
+    });
+  });
+  updateRightsSummary();
+  updateRightsStartEnabled();
+}
+
+// Live filename preview on every keystroke — the one thing the spec calls
+// out as needing to update immediately. Full row re-render (status badge,
+// validation messages) happens on blur so typing never loses focus.
+function onRightsFieldInput(e){
+  const idx = parseInt(e.target.dataset.i), field = e.target.dataset.f;
+  const row = rightsState.rows[idx];
+  row[field] = e.target.value;
+  if(field==='title') row.description = '';
+  row.proposed_filename = rightsBuildFilename(row.client, row.date, rightsTitleOrFallback(row), '.mp4');
+  const fnameEl = document.getElementById('rt-fname-'+idx);
+  if(fnameEl) fnameEl.textContent = row.proposed_filename;
+}
+function onRightsFieldBlur(e){
+  const idx = parseInt(e.target.dataset.i);
+  const row = rightsState.rows[idx];
+  row.errors = [];
+  if(!row.url) row.errors.push('Missing URL');
+  if(!row.client) row.errors.push('Missing client name');
+  row.status = row.errors.length ? 'Needs Review' : 'Ready';
+  renderRightsTable();
+}
+
+function updateRightsSummary(){
+  const rows = rightsState.rows;
+  const ready = rows.filter(r=>r.status==='Ready').length;
+  const review = rows.filter(r=>r.status==='Needs Review').length;
+  const dupes = rows.filter(r=>r.duplicate_of).length;
+  const badge = document.getElementById('rightsSummaryBadge');
+  badge.textContent = `${rows.length} rows · ${ready} ready · ${review} need review${dupes?` · ${dupes} duplicates`:''}`;
+  badge.className = 'step-badge ' + (review>0 ? 'sb-active' : 'sb-complete');
+}
+function updateRightsStartEnabled(){
+  const anyReady = rightsState.rows.some(r=>r.include && r.status==='Ready');
+  document.getElementById('rightsStartBtn').disabled = !(anyReady && rightsState.outputFolder) || rightsState.locked;
+}
+
+async function pickRightsFolder(){
+  if(!rightsState.batchId) return;
+  const r = await fetch(`/api/rights/${rightsState.batchId}/output-folder`, {method:'POST'});
+  const d = await r.json();
+  if(d.folder){
+    rightsState.outputFolder = d.folder;
+    document.getElementById('rightsFolderDisplay').textContent = d.folder;
+    updateRightsStartEnabled();
+  }
+}
+
+async function startRightsBatch(){
+  const errEl = document.getElementById('rightsRunError');
+  errEl.style.display='none';
+  const btn = document.getElementById('rightsStartBtn');
+  btn.disabled=true; btn.textContent='Starting...';
+  rightsState.concurrency = parseInt(document.getElementById('rightsConcurrency').value);
+  const r = await fetch(`/api/rights/${rightsState.batchId}/start`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({rows: rightsState.rows, concurrency: rightsState.concurrency, output_folder: rightsState.outputFolder})
+  });
+  const d = await r.json();
+  if(d.error){
+    errEl.textContent = d.error; errEl.style.display='block';
+    btn.disabled=false; btn.textContent='⚡ START DOWNLOAD'; return;
+  }
+  rightsState.locked = true;
+  document.getElementById('rightsProgressCard').style.display='block';
+  document.getElementById('rightsRunCard').style.display='none';
+  renderRightsTable();
+  rightsState.poll = setInterval(pollRightsStatus, 1500);
+  pollRightsStatus();
+}
+
+async function pollRightsStatus(){
+  if(!rightsState.batchId) return;
+  const r = await fetch(`/api/rights/${rightsState.batchId}`);
+  const d = await r.json();
+  if(d.error) return;
+  rightsState.rows = d.rows;
+  const done = d.completed + d.failed + d.skipped;
+  document.getElementById('rightsOverallBar').style.width = d.total ? `${Math.round(done/d.total*100)}%` : '0%';
+  document.getElementById('rightsOverallText').textContent =
+    `${d.completed} / ${d.total} complete` + (d.failed?` · ${d.failed} failed`:'') + (d.skipped?` · ${d.skipped} skipped`:'');
+  renderRightsTable();
+  if(d.status==='done'){
+    clearInterval(rightsState.poll); rightsState.poll=null;
+    document.getElementById('rightsProgressCard').style.display='none';
+    document.getElementById('rightsDoneCard').style.display='block';
+    document.getElementById('rightsDoneSummary').textContent = `${d.completed} succeeded · ${d.failed} failed · ${d.skipped} skipped`;
+    document.getElementById('rightsRetryBtn').style.display = d.failed>0 ? 'inline-block' : 'none';
+  }
+}
+
+async function cancelRightsBatch(){
+  if(!rightsState.batchId) return;
+  await fetch(`/api/rights/${rightsState.batchId}/cancel`, {method:'POST'});
+}
+
+async function retryRightsFailed(){
+  if(!rightsState.batchId) return;
+  const r = await fetch(`/api/rights/${rightsState.batchId}/retry-failed`, {method:'POST'});
+  const d = await r.json();
+  if(d.error) return;
+  document.getElementById('rightsDoneCard').style.display='none';
+  document.getElementById('rightsProgressCard').style.display='block';
+  rightsState.poll = setInterval(pollRightsStatus, 1500);
+  pollRightsStatus();
+}
+
+function resetRightsFlow(){
+  if(rightsState.poll) clearInterval(rightsState.poll);
+  rightsState = { batchId:null, rows:[], outputFolder:'', concurrency:3, poll:null, locked:false };
+  document.getElementById('rightsReviewCard').style.display='none';
+  document.getElementById('rightsRunCard').style.display='none';
+  document.getElementById('rightsProgressCard').style.display='none';
+  document.getElementById('rightsDoneCard').style.display='none';
+  document.getElementById('rightsFolderDisplay').textContent='No folder selected yet';
+  document.getElementById('rightsFileInput').value='';
+  document.getElementById('rightsDefaultClient').value='';
+}
+
+// ═══════════════════════════════════════════════════════════
+//  HEARTBEAT — keeps server alive, shuts it down on tab close
+// ═══════════════════════════════════════════════════════════
+function startHeartbeat(){
+  // Ping every 5 seconds while the tab is open
+  setInterval(()=>fetch('/api/heartbeat',{method:'POST'}).catch(()=>{}), 5000);
+  // Also ping immediately on load
+  fetch('/api/heartbeat',{method:'POST'}).catch(()=>{});
+}
+
+// ═══════════════════════════════════════════════════════════
+//  BOOT
+// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+//  SELF-UPDATE — banner + one-click "Update & restart"
+//  Squeeze checks the Vault for a newer release on its own; nothing is ever installed until the
+//  person clicks the button here. The server refuses while a download/encode is running.
+// ═══════════════════════════════════════════════════════════
+let updateDismissed = false;   // "Later" hides the banner until the next time Squeeze is opened
+let updateBusy = false;        // true from the click until the page reloads, so polling can't redraw over it
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function setUpdateBanner(html, cls){
+  const el = document.getElementById('updateBanner');
+  if(!el) return;
+  el.className = 'update-banner' + (cls ? ' '+cls : '');
+  el.innerHTML = '<div class="ub-msg">'+html+'</div>';
+  el.style.display = 'flex';
+}
+
+async function refreshUpdateStatus(){
+  if(updateBusy) return;
+  try{
+    const r = await fetch('/api/update/status', {cache:'no-store'});
+    renderUpdateBanner(await r.json());
+  }catch(e){ /* server busy or restarting -- the next tick will try again */ }
+}
+
+function renderUpdateBanner(s){
+  const el = document.getElementById('updateBanner');
+  if(!el || updateBusy) return;
+
+  // Outcome of an update that just happened (success or a rolled-back failure) -- shown once.
+  const res = s.lastResult;
+  if(res){
+    setUpdateBanner(res.ok
+      ? '✓ Squeeze updated to <b>'+escHtml(res.to||'')+'</b>.'
+      : '⚠ '+escHtml(res.error||'The last update failed.'), res.ok ? 'ok' : 'err');
+    const b = document.createElement('button'); b.className='ub-btn'; b.textContent='OK';
+    b.onclick = async()=>{ try{ await fetch('/api/update/ack',{method:'POST'}); }catch(e){} el.style.display='none'; };
+    el.appendChild(b);
+    return;
+  }
+
+  if(s.available && !updateDismissed){
+    const notes = (s.notes||[]).slice(0,3).map(n=>'<li>'+escHtml(n)+'</li>').join('');
+    setUpdateBanner('⬆ <b>Squeeze '+escHtml(s.latest)+'</b> is available <span class="ub-notes">(you have '+escHtml(s.current)+')</span>'
+      + (notes ? '<ul class="ub-notes" style="margin:4px 0 0 18px;">'+notes+'</ul>' : ''));
+    const go = document.createElement('button'); go.className='ub-btn primary'; go.textContent='Update & restart'; go.onclick = applyUpdate;
+    const later = document.createElement('button'); later.className='ub-btn'; later.textContent='Later';
+    later.onclick = ()=>{ updateDismissed = true; el.style.display='none'; };
+    el.appendChild(go); el.appendChild(later);
+    return;
+  }
+  el.style.display = 'none';
+}
+
+async function applyUpdate(){
+  updateBusy = true;
+  setUpdateBanner('Downloading and verifying the update…');
+  let d;
+  try{
+    const r = await fetch('/api/update/apply', {method:'POST'});
+    d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Update failed.');
+  }catch(e){
+    updateBusy = false;
+    setUpdateBanner('⚠ '+escHtml(e.message || String(e)), 'err');
+    return;
+  }
+  setUpdateBanner('Update verified — restarting Squeeze. This takes a few seconds…');
+  const started = Date.now();
+  let sawServerAt = 0;
+  await sleep(2500);
+  while(Date.now() - started < 90000){
+    try{
+      const r = await fetch('/api/version', {cache:'no-store'});
+      if(r.ok){
+        const v = await r.json();
+        if(!sawServerAt) sawServerAt = Date.now();
+        // New version answering -> done. Still the OLD version 15s after it first answered -> the
+        // update was rolled back; reload anyway so the banner can explain what happened.
+        if(v.version === d.toVersion || Date.now() - sawServerAt > 15000){ location.reload(); return; }
+      }
+    }catch(e){ /* still restarting */ }
+    await sleep(1000);
+  }
+  updateBusy = false;
+  setUpdateBanner('⚠ Squeeze didn\'t come back on its own. Close this tab and reopen Squeeze from your Desktop icon.', 'err');
+}
+
+function initUpdates(){
+  refreshUpdateStatus();
+  setInterval(refreshUpdateStatus, 10*60*1000);
+}
+
+init();
+initBatch();
+initRights();
+startHeartbeat();
+initUpdates();
+showView('projects');
+
+// ── Cleanup button ────────────────────────────────────────────────────────────
+document.getElementById('cleanupBtn').addEventListener('click', async () => {
+  if (!confirm('Wipe ALL temporary working files from squeeze_work?\n\nYour exported .mp4 files are safe — only intermediates are deleted.\nThis will also clear the project list.')) return;
+  const btn = document.getElementById('cleanupBtn');
+  btn.textContent = 'Cleaning...';
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/cleanup', { method: 'POST' });
+    const d = await r.json();
+    const count = d.wiped ? d.wiped.length : 0;
+    btn.textContent = `✓ Cleaned ${count} folder(s)`;
+    btn.style.color = 'var(--success)';
+    btn.style.borderColor = 'var(--success)';
+    // Refresh sidebar — all projects are gone
+    document.getElementById('projList').innerHTML = '';
+    currentProject = null;
+    openTabs = []; activeTabId = null; tabMeta = {};
+    renderMain();
+    renderProjectTabs();
+    setTimeout(() => {
+      btn.textContent = '🗑 Clean Temp Files';
+      btn.style.color = '';
+      btn.style.borderColor = '';
+      btn.disabled = false;
+    }, 3000);
+  } catch(e) {
+    btn.textContent = 'Error — see console';
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
