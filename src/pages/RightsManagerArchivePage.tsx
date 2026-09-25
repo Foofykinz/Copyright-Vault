@@ -128,10 +128,17 @@ function ArchiveRow({
       <td>{report.pageFollowerCount !== null ? report.pageFollowerCount.toLocaleString() : <span className="text-secondary">—</span>}</td>
       <td className="wrap">
         {referenceTitles.length > 0 ? (
-          <span className="truncate" title={referenceTitles.join(", ")}>
-            {referenceTitles[0]}
-            {referenceTitles.length > 1 ? ` +${referenceTitles.length - 1}` : ""}
-          </span>
+          <>
+            {/* Tooltip lists every file with its ID; the cell itself shows the first file's title and,
+                on its own line, its ID (plus a "+N" if the match carries more than one). */}
+            <span className="truncate" title={(report.referenceFiles ?? []).map((f) => `${f.title} (ID ${f.id})`).join("\n")}>
+              {referenceTitles[0]}
+              {referenceTitles.length > 1 ? ` +${referenceTitles.length - 1}` : ""}
+            </span>
+            <div className="mono text-secondary" style={{ fontSize: 11 }}>
+              {report.referenceFiles?.[0]?.id}
+            </div>
+          </>
         ) : (
           <span className="text-secondary">—</span>
         )}

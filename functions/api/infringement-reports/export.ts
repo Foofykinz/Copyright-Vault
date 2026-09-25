@@ -57,6 +57,9 @@ const COLUMNS = [
   "Followers",
   "Reference files",
   "Status",
+  // Appended after the existing columns rather than placed beside "Reference files" -- anything
+  // reading this export by position keeps working unchanged.
+  "Reference file IDs",
 ] as const;
 
 function csvEscape(value: string): string {
@@ -79,6 +82,7 @@ function toRow(report: InfringementReportWithNames): string {
     report.pageFollowerCount === null ? "" : String(report.pageFollowerCount),
     (report.referenceFiles ?? []).map((f) => f.title).join("; "),
     INFRINGEMENT_STATUS_LABELS[report.status as InfringementStatus] ?? report.status,
+    (report.referenceFiles ?? []).map((f) => f.id).join("; "),
   ];
   return cells.map((c) => csvEscape(String(c))).join(",");
 }

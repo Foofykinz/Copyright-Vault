@@ -90,6 +90,14 @@ export function InfringementDetailsModal({
         </Field>
         <Field label="Match ID">{report.metaMatchId ?? "—"}</Field>
         <Field label="Video ID">{report.metaVideoId ?? "—"}</Field>
+        {/* Distinct from Match ID -- this is Meta's ID for the protected (reference) file the match
+            was found against. One per line when a match carries more than one, same order as the
+            Reference files list below. */}
+        <Field label="Reference file ID">
+          {report.referenceFiles && report.referenceFiles.length > 0
+            ? report.referenceFiles.map((f) => <div key={f.id}>{f.id}</div>)
+            : "—"}
+        </Field>
         <Field label="Match duration">{report.matchDurationSec !== null ? `${report.matchDurationSec}s` : "—"}</Field>
         <Field label="Views">{report.videoViewCount !== null ? report.videoViewCount.toLocaleString() : "—"}</Field>
         <Field label="Followers">{report.pageFollowerCount !== null ? report.pageFollowerCount.toLocaleString() : "—"}</Field>
