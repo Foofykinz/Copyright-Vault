@@ -1,5 +1,1 @@
-- New: Squeeze can now update itself. When a newer version is available, a banner appears at the top: click "Update & restart" and it downloads the update, checks it, swaps it in, and restarts. It never installs anything without that click.
-- Updates only replace Squeeze's own program files. Your projects, work folders, saved settings, and the install/launch scripts are never touched, and an update is refused while a download or encode is running.
-- If anything goes wrong mid-update, Squeeze restores the previous version automatically and tells you what happened.
-- The Mac install scripts are now packaged as runnable, so the "chmod +x" step in README_MAC.txt shouldn't be needed anymore.
-- This is the first version distributed from the Copyright Vault's Extensions & Tools page. Install it once by hand (INSTALL.bat on Windows, INSTALL.command on Mac); after that, updates arrive in-app.
+- Test release to confirm in-app updating works end to end. No other changes.

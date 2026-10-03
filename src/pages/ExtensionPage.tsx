@@ -207,8 +207,8 @@ export function ExtensionPage() {
           <ol className="extension-instructions">
             <li>Download the ZIP above and extract it somewhere permanent (for example your Documents folder).</li>
             <li>
-              <strong>Windows:</strong> open the extracted <code>Squeeze</code> folder and double-click{" "}
-              <code>INSTALL.bat</code>.
+              <strong>Windows:</strong> open the extracted <code>Squeeze</code> folder, right-click{" "}
+              <code>INSTALL.bat</code> and choose <strong>Run as administrator</strong>.
               <br />
               <strong>Mac:</strong> double-click <code>INSTALL.command</code>. If your Mac blocks it, right-click it and
               choose Open. <code>README_MAC.txt</code> in the folder has the details.
