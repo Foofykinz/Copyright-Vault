@@ -450,6 +450,85 @@ export interface ExtensionInfringementReportImportResult {
   duplicate: boolean;
 }
 
+// ---- Data Pulls (extension's automated Content Protection clickthrough; see migration 0017) ----
+
+/** Read off the match page: "You requested a takedown" / "Your takedown request was approved". */
+export type TakedownStatus = "requested" | "approved";
+
+export const TAKEDOWN_STATUS_LABELS: Record<TakedownStatus, string> = {
+  requested: "Takedown Requested",
+  approved: "Takedown Approved",
+};
+
+export interface DataPull {
+  id: string;
+  rightsManagerAccountId: string | null;
+  clientId: string | null;
+  metaMatchId: string;
+  infringerName: string;
+  infringingUrl: string | null;
+  infringerProfileUrl: string | null;
+  platform: Platform;
+  /** When Meta detected the match -- the match page shows no posting date. */
+  detectedAt: string | null;
+  matchDurationSec: number | null;
+  videoViewCount: number | null;
+  pageFollowerCount: number | null;
+  referenceFiles: InfringementReferenceFile[];
+  takedownStatus: TakedownStatus | null;
+  firstPulledAt: string;
+  lastPulledAt: string;
+}
+
+export interface DataPullWithNames extends DataPull {
+  rightsManagerAccountName: string | null;
+  clientName: string | null;
+}
+
+/** Payload the extension POSTs for one match during a data pull. */
+export interface ExtensionDataPullInput {
+  rightsManagerAccountId: string;
+  clientId?: string | null;
+  metaMatchId: string;
+  infringerName: string;
+  infringingUrl?: string | null;
+  infringerProfileUrl?: string | null;
+  platform: Platform;
+  detectedAt?: string | null;
+  matchDurationSec?: number | null;
+  videoViewCount?: number | null;
+  pageFollowerCount?: number | null;
+  referenceFiles?: InfringementReferenceFile[] | null;
+  takedownStatus?: TakedownStatus | null;
+}
+
+/** `updated` is true when this match had been pulled before and its row was refreshed in place. */
+export interface ExtensionDataPullResult {
+  dataPull: DataPullWithNames;
+  updated: boolean;
+}
+
+/** Query params for GET /api/data-pulls and its CSV export. `takedownStatus: "none"` = neither. */
+export interface DataPullListParams {
+  rightsManagerAccountId?: string;
+  clientId?: string;
+  takedownStatus?: TakedownStatus | "none";
+  /** Substring match against infringer name, or an exact match ID. */
+  search?: string;
+  pulledFrom?: string;
+  pulledTo?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface DataPullListResult {
+  dataPulls: DataPullWithNames[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 export interface ApiError {
   error: string;
   details?: Record<string, string>;

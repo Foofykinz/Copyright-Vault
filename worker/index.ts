@@ -31,6 +31,9 @@ import * as infringementReportScreenshot from "../functions/api/infringement-rep
 import * as statsIndex from "../functions/api/stats/index";
 import * as extensionVideos from "../functions/api/extension/videos";
 import * as extensionInfringementReports from "../functions/api/extension/infringement-reports";
+import * as extensionDataPulls from "../functions/api/extension/data-pulls";
+import * as dataPullsIndex from "../functions/api/data-pulls/index";
+import * as dataPullsExport from "../functions/api/data-pulls/export";
 import * as metadataLookup from "../functions/api/metadata/index";
 import * as youtubeChannelVideos from "../functions/api/youtube/channel-videos";
 import * as vimeoChannelVideos from "../functions/api/vimeo/channel-videos";
@@ -92,6 +95,9 @@ register("/api/infringement-reports/:id/screenshot", infringementReportScreensho
 register("/api/stats", statsIndex);
 register("/api/extension/videos", extensionVideos);
 register("/api/extension/infringement-reports", extensionInfringementReports);
+register("/api/extension/data-pulls", extensionDataPulls);
+register("/api/data-pulls", dataPullsIndex);
+register("/api/data-pulls/export", dataPullsExport);
 register("/api/metadata", metadataLookup);
 register("/api/youtube/channel-videos", youtubeChannelVideos);
 register("/api/vimeo/channel-videos", vimeoChannelVideos);
@@ -111,6 +117,7 @@ const SESSION_EXEMPT_PREFIXES = ["/api/auth/"];
 const SESSION_EXEMPT_EXACT = [
   "/api/extension/videos",
   "/api/extension/infringement-reports",
+  "/api/extension/data-pulls",
   "/api/youtube/channel-videos",
   "/api/vimeo/channel-videos",
 ];

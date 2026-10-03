@@ -1,3 +1,9 @@
+- New: Data pull — on a Content Protection match, choose "Data pull" mode and press Start Data Pull. It saves the match's data (no screenshot), clicks Next, and repeats, up to 50 matches per run with a random 3–10 second pause on each. Everything lands on the new Data Pulls page in Copyright Vault, which can be exported as CSV. Open the first match from the Content Protection list (Next is greyed out on a match opened from a direct link), and keep the tab in front and the side panel open while it runs
+- Data pull records each match's takedown status: "You requested a takedown" shows as Takedown Requested, "Your takedown request was approved" as Takedown Approved. Pulling a match again updates its row instead of adding a duplicate
+- Data pull only ever clicks Next — never Release, Claim, Takedown, or any of the match's switches — and stops on its own at the last match, after 3 errors in a row, or if you switch tabs
+- "Evidence capture" mode is the same capture-review-send with a screenshot as before, into the Copyright Archive
+- Non-public reels are skipped (Meta shows no link to the post). Fixed: these used to be captured with Facebook's own Reels tab saved as the link
+- Fixed: Ctrl+Shift+F quick capture no longer grabs Facebook's Reels tab as the link when a match has no "See post" link
 - Fixed: Rights Manager captures failing on Meta's updated Content Protection "Match details" page (the "Couldn't find a Match ID" error) — the Match ID is now read from the page's URL, and the date from the "Detected" line under the protected content
 - New: match duration is now captured from Content Protection's "Matching segments". Note: Video ID isn't shown on Meta's updated page at all, so it stays blank for these matches
 - Screenshots of Content Protection matches now leave out the Territories country-code box (hidden only while the screenshot is taken), so they can stay more zoomed in and readable

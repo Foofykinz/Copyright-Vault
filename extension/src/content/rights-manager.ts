@@ -5,12 +5,14 @@ import {
   RIGHTS_MANAGER_MATCHES_SOURCE,
   type CapturedMatch,
   type CapturedReferenceFile,
+  type CollectMatchOptions,
   type CollectMatchResult,
   type DetectRightsManagerPageResult,
   type RawCopyrightMatch,
   type RightsManagerPageKind,
 } from "../lib/rights-manager-scraped";
 import { matchIdFromUrl, parseDetectedDate, segmentRangeSeconds, stripReferenceStats } from "../lib/rights-manager-parse";
+import { registerContentProtectionInspector } from "../content-protection";
 
 // Broadened from a "/rights_manager/" path check on business.facebook.com alone to any
 // isRightsManagerHost() (manifest.json's content_scripts match patterns cover the same hosts, so
@@ -110,7 +112,28 @@ if (isRightsManagerHost(location.hostname)) {
    * match's page (from Karam's real DOM sample) and should NOT be present on the overview/list
    * page, which just lists matches rather than showing one's full detail card. */
   function isContentProtectionMatchPage(): boolean {
-    return location.pathname.includes(CONTENT_PROTECTION_PATH) && findSeePostLink() !== null;
+    // A non-public reel match has no "See post" link at all -- it was only ever "recognized" before
+    // because findSeePostLink() wrongly matched Facebook's top-nav Reels tab. Its "Non-public reel"
+    // label is the equivalent signal. Same for a takedown notice -- once a takedown goes through the
+    // post link may be gone, but the page is still a match.
+    if (!location.pathname.includes(CONTENT_PROTECTION_PATH)) return false;
+    return findSeePostLink() !== null || isNonPublicMatch() || readTakedownStatus() !== null;
+  }
+
+  /** The two takedown notices Meta shows on a match (wording from the team, not yet seen in a DOM
+   * sample). Matched as case-insensitive phrases inside the page text rather than exact element
+   * text, since the notice may sit in a sentence with more after it. Only the match itself is read
+   * -- role="main" plus the match panel -- never Facebook's notifications or top bar, where a
+   * "takedown approved" notification about a *different* match could otherwise show up. */
+  function readTakedownStatus(): "requested" | "approved" | null {
+    const text = [...document.querySelectorAll<HTMLElement>('[role="main"], [role="navigation"]')]
+      .filter((el) => !el.closest(FACEBOOK_CHROME_SELECTOR) && !el.closest('[aria-label="Notifications" i]'))
+      .map((el) => el.innerText)
+      .join("\n")
+      .toLowerCase();
+    if (text.includes("your takedown request was approved")) return "approved";
+    if (text.includes("you requested a takedown")) return "requested";
+    return null;
   }
 
   function detectPageKind(): RightsManagerPageKind | null {
@@ -202,13 +225,28 @@ if (isRightsManagerHost(location.hostname)) {
     try {
       const { hostname, pathname } = new URL(href);
       const host = hostname.replace(/^www\.|^web\./, "");
-      if (host === "instagram.com") return /^\/(reel|p)\//.test(pathname);
-      if (host === "facebook.com") return /\/(reel|videos)\//.test(pathname);
+      // An id segment is required after reel/p/videos -- confirmed live, Facebook's own top-nav Reels
+      // tab is a bare "facebook.com/reel/?s=tab", which this used to accept as the infringing post
+      // whenever a match had no "See post" link (every non-public reel).
+      if (host === "instagram.com") return /^\/(reel|p)\/[^/]+/.test(pathname);
+      if (host === "facebook.com") return /\/(reel|videos)\/[^/]+/.test(pathname);
       if (host === "fb.watch") return true;
       return false;
     } catch {
       return false;
     }
+  }
+
+  /** Facebook's own top bar / top nav (confirmed live labels) -- never part of a match. */
+  const FACEBOOK_CHROME_SELECTOR = '[role="banner"], [role="navigation"][aria-label="Facebook" i]';
+
+  /** "Non-public reel" -- confirmed live, shown where the account name would be on a match against
+   * a non-public reel, which has no "See post" link at all. */
+  function isNonPublicMatch(): boolean {
+    for (const span of document.querySelectorAll<HTMLElement>("span")) {
+      if (/^non-public (reel|video|post)s?$/i.test(cleanText(span.textContent)) && !span.closest(FACEBOOK_CHROME_SELECTOR)) return true;
+    }
+    return false;
   }
 
   function findSeePostLink(): HTMLAnchorElement | null {
@@ -221,6 +259,7 @@ if (isRightsManagerHost(location.hostname)) {
     // also point at instagram.com/facebook.com URLs that would otherwise false-positive here.
     return (
       links.find((a) => {
+        if (a.closest(FACEBOOK_CHROME_SELECTOR)) return false;
         const label = a.getAttribute("aria-label") ?? "";
         if (label.startsWith("View ") && label.endsWith("'s profile")) return false;
         if (a.href.includes("/content_protection/protection_details/")) return false;
@@ -409,10 +448,29 @@ if (isRightsManagerHost(location.hostname)) {
     return null;
   }
 
-  function mapMatchFromContentProtection(): CollectMatchResult {
+  function mapMatchFromContentProtection(options: CollectMatchOptions = {}): CollectMatchResult {
     const seePost = findSeePostLink();
-    if (!seePost?.href) return { ok: false, error: 'Couldn\'t find a "See post" link on this match.' };
-    const infringingUrl = stripFbclid(unwrapFacebookRedirect(seePost.href));
+    const takedownStatus = readTakedownStatus();
+    // Non-public reels aren't logged at all (decided 2026-10-02) -- there's no post to link to.
+    // Reported as a skip, not a failure. Only when Meta's own "Non-public reel" label is present, so
+    // a layout change that hides "See post" still fails loudly instead of silently skipping.
+    if (!seePost?.href && isNonPublicMatch()) {
+      return {
+        ok: false,
+        skipped: "non_public",
+        matchId: readMatchId(),
+        error: "Non-public reel — skipped. These aren't logged since there's no public post.",
+      };
+    }
+    // Data pulls only: a takedown notice explains a missing post link, so the match data is still
+    // worth recording -- with an empty link, never a guessed one.
+    const linkOptional = options.allowMissingPostLink === true && takedownStatus !== null;
+    if (!seePost?.href && !linkOptional) return { ok: false, error: 'Couldn\'t find a "See post" link on this match.' };
+
+    const matchId = readMatchId();
+    if (!matchId) return { ok: false, error: "Couldn't find a Match ID — open a specific match's details page (its URL should contain match_id)." };
+
+    const infringingUrl = seePost?.href ? stripFbclid(unwrapFacebookRedirect(seePost.href)) : "";
 
     const profileLink = findProfileLink();
     let infringerProfileUrl = profileLink?.href ? stripFbclid(unwrapFacebookRedirect(profileLink.href)) : null;
@@ -424,9 +482,6 @@ if (isRightsManagerHost(location.hostname)) {
         infringerProfileUrl = infringerProfileUrl ?? nearFollowers.profileUrl;
       }
     }
-
-    const matchId = readMatchId();
-    if (!matchId) return { ok: false, error: "Couldn't find a Match ID — open a specific match's details page (its URL should contain match_id)." };
 
     const postedAt = readDetectedAtIso();
     if (!postedAt) return { ok: false, error: 'Couldn\'t find/parse a "Detected <date>" value on this page.' };
@@ -448,6 +503,7 @@ if (isRightsManagerHost(location.hostname)) {
       infringerProfileUrl,
       referenceFiles: findReferenceFiles(),
       videoAvailable: null,
+      takedownStatus,
     };
     if (match.referenceFiles.length === 0) {
       // The reference-asset card's link shape was only ever confirmed on the older layout
@@ -505,6 +561,7 @@ if (isRightsManagerHost(location.hostname)) {
       infringerProfileUrl: asset.owner_url ?? null,
       referenceFiles: mapReferenceFiles(raw),
       videoAvailable: null,
+      takedownStatus: null,
     };
     return { ok: true, match };
   }
@@ -543,18 +600,19 @@ if (isRightsManagerHost(location.hostname)) {
       infringerProfileUrl: null,
       referenceFiles: [],
       videoAvailable: null,
+      takedownStatus: null,
     };
     return { ok: true, match };
   }
 
-  function collectCurrentMatch(): CollectMatchResult {
+  function collectCurrentMatch(options: CollectMatchOptions = {}): CollectMatchResult {
     // Logged unconditionally, every capture, not just the failure case below -- the fastest way to
     // tell "which path produced this?" apart is a routing trace, not reasoning about it after the
     // fact. Whoever's testing can open DevTools' console on business.facebook.com and see exactly
     // what fired.
     if (isContentProtectionMatchPage()) {
       console.info("[viral-drm] Rights Manager match capture: routed to Content Protection parser.");
-      return mapMatchFromContentProtection();
+      return mapMatchFromContentProtection(options);
     }
 
     const matchId = readLabeledValue("Match ID");
@@ -585,9 +643,14 @@ if (isRightsManagerHost(location.hostname)) {
     return raw ? mapMatchFromNetwork(matchId, raw) : mapMatchFromDomOnly(matchId);
   }
 
+  // Read-only "Inspect Current Match" diagnostic (side panel's developer section). Handed the
+  // existing Content Protection parser so its output can be compared against the inspector's own
+  // heuristics, and so a future capture loop reuses it rather than a second implementation.
+  registerContentProtectionInspector({ extractCurrentMatch: () => mapMatchFromContentProtection() });
+
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === COLLECT_CURRENT_MATCH_MESSAGE) {
-      sendResponse(collectCurrentMatch());
+      sendResponse(collectCurrentMatch({ allowMissingPostLink: message.allowMissingPostLink === true }));
     } else if (message?.type === DETECT_RIGHTS_MANAGER_PAGE_MESSAGE) {
       const kind = detectPageKind();
       const result: DetectRightsManagerPageResult = { recognized: kind !== null, kind };

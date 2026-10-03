@@ -10,10 +10,10 @@ import {
   type CapturedMatch,
   type CollectMatchResult,
   type DetectRightsManagerPageResult,
+  type RightsManagerPageKind,
 } from "../lib/rights-manager-scraped";
 import type {
   Client,
-  ExtensionInfringementReportImportInput,
   ExtensionVideoImportInput,
   Platform,
   RightsManagerAccount,
@@ -23,6 +23,8 @@ import type {
 import { PLATFORM_LABELS } from "../../../shared/types";
 import { suggestFilename } from "../../../shared/format";
 import { centralDateString } from "../../../shared/dates";
+import { renderContentProtectionInspector } from "./content-protection-inspector";
+import { buildImportInput, isAutoCaptureRunning, renderAutoCapture, type AutoCaptureDeps } from "./auto-capture";
 
 const YOUTUBE_CATEGORY_LABELS: Record<"short" | "live" | "upload", string> = {
   short: "SHORTS",
@@ -77,6 +79,12 @@ interface State {
   // A completely separate flow from the video-import state above: one match captured, reviewed,
   // and sent at a time, rather than a multi-select scan list. See renderRightsManagerView().
   isRightsManager: boolean;
+  /** Which interface the page is -- the automated Data pull is Content Protection only. */
+  rightsManagerKind: RightsManagerPageKind | null;
+  /** "evidence" = the manual capture -> review -> send (with screenshot) into the Copyright Archive;
+   * "data_pull" = the automated clickthrough into the Data Pulls table, no screenshots. Two separate
+   * purposes -- see popup/auto-capture.ts. */
+  captureMode: "evidence" | "data_pull";
   rightsManagerAccounts: RightsManagerAccount[];
   selectedRightsManagerAccountId: string;
   capturedMatch: CapturedMatch | null;
@@ -110,6 +118,8 @@ const state: State = {
   youtubeScan: null,
 
   isRightsManager: false,
+  rightsManagerKind: null,
+  captureMode: "evidence",
   rightsManagerAccounts: [],
   selectedRightsManagerAccountId: "",
   capturedMatch: null,
@@ -136,12 +146,14 @@ function isRightsManagerHostTab(url: string | undefined): boolean {
  * facebook.com subdomain — see isRightsManagerHost), so this doesn't add a round-trip to every tab
  * on every poll tick. */
 async function detectRightsManagerTab(tab: chrome.tabs.Tab | undefined): Promise<boolean> {
+  state.rightsManagerKind = null;
   if (!isRightsManagerHostTab(tab?.url) || tab?.id === undefined) return false;
   try {
     // Timeout-guarded (see sendMessageWithTimeout's comment below) for the same reason as the
     // Facebook post-scan poll -- this call sits inside facebookPollTick()'s own try/finally too,
     // so a hang here would freeze all future polling just as badly.
     const result = await sendMessageWithTimeout<DetectRightsManagerPageResult>(tab.id, { type: DETECT_RIGHTS_MANAGER_PAGE_MESSAGE });
+    state.rightsManagerKind = result?.kind ?? null;
     return result?.recognized ?? false;
   } catch {
     return false; // content script not ready yet (e.g. page still loading) — retried next poll tick
@@ -642,6 +654,9 @@ let facebookPollInFlight = false;
 async function facebookPollTick(): Promise<void> {
   // Not configured / mid-send / on the settings screen — nothing to poll into.
   if (!state.apiBaseUrl || !state.apiToken || state.showSettings || state.busy) return;
+  // The automated run drives the page and re-renders itself; page detection flickering mid-way
+  // through a Next click would otherwise swap the whole panel out from under it.
+  if (isAutoCaptureRunning()) return;
   if (facebookPollInFlight) return;
   facebookPollInFlight = true;
   try {
@@ -1014,7 +1029,9 @@ async function collectCurrentMatch(): Promise<void> {
   if (!result) {
     state.matchError = "Got an unexpected response from the page.";
   } else if (!result.ok) {
-    state.matchError = result.error;
+    // A deliberate skip (non-public reel) is information, not an error.
+    if (result.skipped) state.matchStatus = result.error;
+    else state.matchError = result.error;
   } else {
     // Match capture succeeded — this is kept even if the screenshot step below fails, since the
     // screenshot is optional server-side and a failure there shouldn't discard a good capture.
@@ -1043,25 +1060,11 @@ async function sendCapturedMatch(): Promise<void> {
   state.matchError = null;
   render();
 
-  const input: ExtensionInfringementReportImportInput = {
+  // Shared with the automated run (popup/auto-capture.ts) so both always send the same shape.
+  const input = buildImportInput(match, state.matchScreenshotDataUrl, {
     clientId: state.selectedClientId || null,
     rightsManagerAccountId: state.selectedRightsManagerAccountId,
-    infringerName: match.infringerName,
-    infringingUrl: match.infringingUrl,
-    platform: match.platform,
-    postedAt: match.postedAt,
-    notes: match.notes || null,
-    metaMatchId: match.metaMatchId,
-    metaVideoId: match.metaVideoId,
-    matchDurationSec: match.matchDurationSec,
-    videoViewCount: match.videoViewCount,
-    pageFollowerCount: match.pageFollowerCount,
-    isAccountPrivate: match.isAccountPrivate,
-    infringerProfileUrl: match.infringerProfileUrl,
-    referenceFiles: match.referenceFiles,
-    screenshotDataUrl: state.matchScreenshotDataUrl,
-    videoAvailable: match.videoAvailable,
-  };
+  });
 
   try {
     const result = await extensionApi.importInfringementReport({ apiBaseUrl: state.apiBaseUrl, apiToken: state.apiToken }, input);
@@ -1085,6 +1088,7 @@ async function sendCapturedMatch(): Promise<void> {
  * can never drift from what manually capturing-then-sending actually does. */
 async function quickCaptureAndSend(): Promise<void> {
   if (state.busy || state.capturingMatch) return; // already mid-flight — the shortcut fired twice
+  if (isAutoCaptureRunning()) return; // the automated run is already capturing this page
   if (!state.isRightsManager) {
     state.matchError = "This page isn't a recognized Rights Manager match — open a specific match's details first.";
     render();
@@ -1393,6 +1397,15 @@ function renderMatchReviewCard(match: CapturedMatch): HTMLElement {
   return container;
 }
 
+const autoCaptureDeps: AutoCaptureDeps = {
+  getSendContext: () => ({
+    config: { apiBaseUrl: state.apiBaseUrl, apiToken: state.apiToken },
+    rightsManagerAccountId: state.selectedRightsManagerAccountId,
+    clientId: state.selectedClientId || null,
+  }),
+  rerender: () => render(),
+};
+
 function renderRightsManagerView(): HTMLElement {
   const container = el("div");
 
@@ -1422,7 +1435,47 @@ function renderRightsManagerView(): HTMLElement {
 
   container.append(accountField, clientField);
 
-  if (!state.capturedMatch) {
+  const running = isAutoCaptureRunning();
+  // Changing who records get saved under halfway through a run would split one run across two
+  // accounts/clients -- locked until it ends.
+  accountSelect.disabled = running;
+  clientSelect.disabled = running;
+
+  // Data pull is Content Protection only (classic Rights Manager has no Next-button flow), so the
+  // choice is only offered there; anywhere else it's evidence capture, same as always.
+  const offerDataPull = state.rightsManagerKind === "content_protection" || running;
+  const mode = offerDataPull ? state.captureMode : "evidence";
+  if (offerDataPull) {
+    const modeField = el("div", { className: "field" }, [el("label", { textContent: "Mode" })]);
+    for (const [value, label, hint] of [
+      ["evidence", "Evidence capture", "One match at a time, reviewed, with a screenshot → Copyright Archive"],
+      ["data_pull", "Data pull", "Automated clickthrough, match data only, no screenshots → Data Pulls"],
+    ] as const) {
+      const radio = el("input", { type: "radio", name: "capture-mode", value, checked: mode === value, disabled: running });
+      radio.addEventListener("change", () => {
+        state.captureMode = value;
+        state.matchError = null;
+        state.matchStatus = null;
+        render();
+      });
+      modeField.appendChild(el("label", { className: "flex-row", title: hint }, [radio, ` ${label}`]));
+    }
+    modeField.appendChild(el("div", { className: "hint", textContent: mode === "evidence" ? "One match at a time, reviewed, with a screenshot → Copyright Archive." : "Automated clickthrough, match data only, no screenshots → Data Pulls." }));
+    container.appendChild(modeField);
+  }
+
+  if (mode === "data_pull") {
+    container.appendChild(
+      renderAutoCapture(
+        autoCaptureDeps,
+        !state.selectedRightsManagerAccountId
+          ? "Choose a Rights Manager account first."
+          : state.capturedMatch || state.capturingMatch
+            ? "Finish or discard the evidence capture you're reviewing first."
+            : null
+      )
+    );
+  } else if (!state.capturedMatch) {
     const captureBtn = el("button", {
       className: "primary",
       textContent: state.capturingMatch ? "Capturing…" : "Capture this match",
@@ -1612,11 +1665,18 @@ function render(): void {
     appRoot.appendChild(renderSettingsView());
     return;
   }
-  if (state.isRightsManager) {
-    appRoot.appendChild(renderRightsManagerView());
-    return;
+  // A run in progress keeps the match view up even if page detection blips between matches.
+  appRoot.appendChild(state.isRightsManager || isAutoCaptureRunning() ? renderRightsManagerView() : renderMainView());
+  // Temporary developer tool -- offered on any facebook.com tab, not just recognized match pages,
+  // since diagnosing a page the capture code *doesn't* recognize is the main reason it exists.
+  if (isRightsManagerHostTab(state.tabUrl ?? undefined)) {
+    appRoot.appendChild(
+      renderContentProtectionInspector({
+        getTabId: async () => (await activeTab())?.id,
+        rerender: render,
+      })
+    );
   }
-  appRoot.appendChild(renderMainView());
 }
 
 // Relayed from background/index.ts's chrome.commands.onCommand listener for the Ctrl+Shift+F

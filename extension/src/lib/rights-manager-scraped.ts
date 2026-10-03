@@ -99,6 +99,20 @@ export interface CapturedMatch {
    * it's never scraped; always starts null ("unknown") and is set by whoever reviews the match in
    * the review card before sending, same as the editable infringerName/notes fields. */
   videoAvailable: boolean | null;
+  /** Content Protection only: "You requested a takedown" -> requested, "Your takedown request was
+   * approved" -> approved, else null. Sent with data pulls; evidence captures don't store it. */
+  takedownStatus: "requested" | "approved" | null;
 }
 
-export type CollectMatchResult = { ok: true; match: CapturedMatch } | { ok: false; error: string };
+/** Optional fields on a COLLECT_CURRENT_MATCH_MESSAGE. `allowMissingPostLink` (data pulls only):
+ * a match with a takedown status but no "See post" link -- the post may be gone once a takedown
+ * goes through -- is captured with an empty infringingUrl instead of failing. Evidence capture never
+ * sets it: a record there needs the link. */
+export interface CollectMatchOptions {
+  allowMissingPostLink?: boolean;
+}
+
+/** `skipped` marks a deliberate skip rather than a failure -- currently only "non_public": a match
+ * against a non-public reel (Meta shows no post link), which isn't logged at all by design. A future
+ * automated capture loop advances past these instead of counting them as errors. */
+export type CollectMatchResult = { ok: true; match: CapturedMatch } | { ok: false; error: string; skipped?: "non_public"; matchId?: string | null };

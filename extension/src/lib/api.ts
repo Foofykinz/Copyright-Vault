@@ -1,5 +1,7 @@
 import type {
   Client,
+  ExtensionDataPullInput,
+  ExtensionDataPullResult,
   ExtensionInfringementReportImportInput,
   ExtensionInfringementReportImportResult,
   ExtensionVideoImportInput,
@@ -14,6 +16,15 @@ import type {
 } from "../../../shared/types";
 import type { ExtensionConfig } from "./storage";
 
+/** Carries the HTTP status so callers can tell an auth failure (401/403 -- e.g. a wrong or rotated
+ * extension token) apart from an ordinary bad request. Same message as before for display. */
+export class ApiRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
 async function request<T>(config: ExtensionConfig, path: string, init?: RequestInit): Promise<T> {
   const base = config.apiBaseUrl.replace(/\/$/, "");
   const res = await fetch(`${base}${path}`, {
@@ -26,7 +37,7 @@ async function request<T>(config: ExtensionConfig, path: string, init?: RequestI
   });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new Error((body && body.error) || `Request failed with status ${res.status}.`);
+    throw new ApiRequestError((body && body.error) || `Request failed with status ${res.status}.`, res.status);
   }
   return res.json() as Promise<T>;
 }
@@ -59,6 +70,11 @@ export const extensionApi = {
     request<{ rightsManagerAccounts: RightsManagerAccount[] }>(config, "/api/rights-manager-accounts"),
   importInfringementReport: (config: ExtensionConfig, input: ExtensionInfringementReportImportInput) =>
     request<ExtensionInfringementReportImportResult>(config, "/api/extension/infringement-reports", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  importDataPull: (config: ExtensionConfig, input: ExtensionDataPullInput) =>
+    request<ExtensionDataPullResult>(config, "/api/extension/data-pulls", {
       method: "POST",
       body: JSON.stringify(input),
     }),

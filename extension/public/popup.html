@@ -154,6 +154,82 @@
         border-top: 1px solid #303640;
         margin: 2px 0;
       }
+      /* Content Protection Inspector (developer section) */
+      details.inspector-section {
+        border: 1px solid #303640;
+        border-radius: 4px;
+        padding: 6px 8px;
+        margin: 6px 12px 0;
+      }
+      details.inspector-section details.inspector-section {
+        margin: 6px 0 0;
+      }
+      details.inspector-section > summary {
+        color: #d1d5db;
+        font-weight: 600;
+      }
+      #app > details.inspector-section {
+        margin: 6px 0 12px;
+      }
+      .inspector-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        max-height: 240px;
+        overflow-y: auto;
+        border: 1px solid #232833;
+        border-radius: 4px;
+        padding: 4px 6px;
+        margin-top: 4px;
+        font-size: 11px;
+        word-break: break-word;
+      }
+      .inspector-list.tall {
+        max-height: 420px;
+      }
+      .kv {
+        display: flex;
+        gap: 8px;
+        font-size: 11px;
+        margin-top: 2px;
+      }
+      .kv .k,
+      .inspector-section .k {
+        color: #9ca3af;
+        flex: 0 0 auto;
+        min-width: 110px;
+        font-size: 11px;
+        margin-top: 4px;
+      }
+      .kv .v {
+        word-break: break-all;
+      }
+      .inspector-section .sub {
+        color: #9ca3af;
+        font-size: 10.5px;
+        padding-left: 8px;
+      }
+      .conf-high {
+        color: #6fcf8f;
+      }
+      .conf-medium {
+        color: #d9a441;
+      }
+      .conf-low {
+        color: #e0554f;
+      }
+      .blocked {
+        color: #e0554f;
+      }
+      .heading-block {
+        font-weight: 600;
+      }
+      pre.mono {
+        font-size: 10.5px;
+        white-space: pre-wrap;
+        word-break: break-all;
+        margin: 4px 0 0;
+      }
     </style>
   </head>
   <body>

@@ -12,6 +12,8 @@ import type {
   CreateInfringementReportInput,
   CreateVideoInput,
   DashboardStats,
+  DataPullListParams,
+  DataPullListResult,
   DeadlineVideo,
   HuntSourceResult,
   InfringementReportListParams,
@@ -60,7 +62,7 @@ const patch = <T>(path: string, body: unknown) => request<T>(path, { method: "PA
 
 /** Shared between infringementReports.list and .exportUrl so the export link's filters always
  * match whatever's currently on screen. */
-function buildInfringementReportQuery(filters?: InfringementReportListParams): string {
+function buildInfringementReportQuery(filters?: InfringementReportListParams | DataPullListParams): string {
   const params = new URLSearchParams();
   if (!filters) return "";
   for (const [key, value] of Object.entries(filters)) {
@@ -157,6 +159,17 @@ export const api = {
     exportUrl: (filters?: InfringementReportListParams) => {
       const qs = buildInfringementReportQuery(filters);
       return `/api/infringement-reports/export${qs ? `?${qs}` : ""}`;
+    },
+  },
+  dataPulls: {
+    list: (params: DataPullListParams) => {
+      const qs = buildInfringementReportQuery(params);
+      return request<DataPullListResult>(`/data-pulls${qs ? `?${qs}` : ""}`);
+    },
+    /** Direct download link, same as infringementReports.exportUrl. */
+    exportUrl: (filters?: DataPullListParams) => {
+      const qs = buildInfringementReportQuery(filters);
+      return `/api/data-pulls/export${qs ? `?${qs}` : ""}`;
     },
   },
   stats: {
