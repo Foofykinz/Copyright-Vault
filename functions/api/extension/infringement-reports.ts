@@ -14,6 +14,7 @@ import {
   requireUrl,
 } from "../../lib/validation";
 import type {
+  ExtensionInfringementReportExistsResult,
   ExtensionInfringementReportImportInput,
   ExtensionInfringementReportImportResult,
   InfringementReferenceFile,
@@ -93,6 +94,21 @@ function decodeDataUrl(dataUrl: string | null | undefined): { bytes: Uint8Array;
 // for the fixed, unusable system user this attributes them to instead of relaxing found_by_user_id's
 // NOT NULL constraint.
 const SYSTEM_USER_ID = "system-rights-manager-extension";
+
+/** Whether a match is already in the Copyright Archive -- the automated run asks this before
+ * taking a screenshot, so a re-run over already-logged matches doesn't capture screenshots the
+ * POST below would only throw away as duplicates. Same bearer token as the POST. */
+export const onRequestGet: ApiHandler = async (context) => {
+  try {
+    requireBearerToken(context.request, context.env);
+    const metaMatchId = requireString(new URL(context.request.url).searchParams.get("metaMatchId"), "metaMatchId");
+    const row = await context.env.DB.prepare("SELECT 1 FROM infringement_reports WHERE meta_match_id = ?").bind(metaMatchId).first();
+    const result: ExtensionInfringementReportExistsResult = { exists: row !== null };
+    return json(result);
+  } catch (err) {
+    return errorResponse(err);
+  }
+};
 
 export const onRequestPost: ApiHandler = async (context) => {
   try {

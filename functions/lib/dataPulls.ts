@@ -18,6 +18,7 @@ export interface DataPullRow {
   page_follower_count: number | null;
   reference_files: string | null;
   takedown_status: string | null;
+  is_monetized: number | null;
   first_pulled_at: string;
   last_pulled_at: string;
   rights_manager_account_name: string | null;
@@ -57,6 +58,7 @@ export function mapDataPull(row: DataPullRow): DataPullWithNames {
     pageFollowerCount: row.page_follower_count,
     referenceFiles: parseReferenceFiles(row.reference_files),
     takedownStatus: (row.takedown_status as TakedownStatus | null) ?? null,
+    monetized: row.is_monetized === 1 ? true : null,
     firstPulledAt: row.first_pulled_at,
     lastPulledAt: row.last_pulled_at,
     rightsManagerAccountName: row.rights_manager_account_name,

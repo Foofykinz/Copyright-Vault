@@ -2,6 +2,7 @@ import type {
   Client,
   ExtensionDataPullInput,
   ExtensionDataPullResult,
+  ExtensionInfringementReportExistsResult,
   ExtensionInfringementReportImportInput,
   ExtensionInfringementReportImportResult,
   ExtensionVideoImportInput,
@@ -73,6 +74,8 @@ export const extensionApi = {
       method: "POST",
       body: JSON.stringify(input),
     }),
+  infringementReportExists: (config: ExtensionConfig, metaMatchId: string) =>
+    request<ExtensionInfringementReportExistsResult>(config, `/api/extension/infringement-reports?metaMatchId=${encodeURIComponent(metaMatchId)}`),
   importDataPull: (config: ExtensionConfig, input: ExtensionDataPullInput) =>
     request<ExtensionDataPullResult>(config, "/api/extension/data-pulls", {
       method: "POST",

@@ -19,6 +19,7 @@ const COLUMNS = [
   "Reference files",
   "Reference file IDs",
   "Takedown",
+  "Monetized",
   "First pulled",
   "Last pulled",
 ] as const;
@@ -46,6 +47,7 @@ function toRow(p: DataPullWithNames): string {
     p.referenceFiles.map((f) => f.title).join("; "),
     p.referenceFiles.map((f) => f.id).join("; "),
     p.takedownStatus ? TAKEDOWN_STATUS_LABELS[p.takedownStatus] : "",
+    p.monetized ? "Yes" : "",
     p.firstPulledAt,
     p.lastPulledAt,
   ]

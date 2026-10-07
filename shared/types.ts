@@ -450,6 +450,12 @@ export interface ExtensionInfringementReportImportResult {
   duplicate: boolean;
 }
 
+/** GET /api/extension/infringement-reports?metaMatchId=... -- lets the automated run skip taking a
+ * screenshot for a match that's already in the Copyright Archive. */
+export interface ExtensionInfringementReportExistsResult {
+  exists: boolean;
+}
+
 // ---- Data Pulls (extension's automated Content Protection clickthrough; see migration 0017) ----
 
 /** Read off the match page: "You requested a takedown" / "Your takedown request was approved". */
@@ -476,6 +482,8 @@ export interface DataPull {
   pageFollowerCount: number | null;
   referenceFiles: InfringementReferenceFile[];
   takedownStatus: TakedownStatus | null;
+  /** True when Meta showed "Monetized" on the match at the latest pull; null otherwise. */
+  monetized: boolean | null;
   firstPulledAt: string;
   lastPulledAt: string;
 }
@@ -500,6 +508,7 @@ export interface ExtensionDataPullInput {
   pageFollowerCount?: number | null;
   referenceFiles?: InfringementReferenceFile[] | null;
   takedownStatus?: TakedownStatus | null;
+  monetized?: boolean | null;
 }
 
 /** `updated` is true when this match had been pulled before and its row was refreshed in place. */

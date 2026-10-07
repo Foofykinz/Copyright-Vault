@@ -102,6 +102,14 @@ export interface CapturedMatch {
   /** Content Protection only: "You requested a takedown" -> requested, "Your takedown request was
    * approved" -> approved, else null. Sent with data pulls; evidence captures don't store it. */
   takedownStatus: "requested" | "approved" | null;
+  /** Content Protection only: Meta's "Detected <date>" as ISO, or null when the match page doesn't
+   * show one (confirmed live: a match with no reference-file card under "Matching segments" has no
+   * date anywhere). postedAt above then falls back to the capture time, flagged in notes, because
+   * the Copyright Archive requires a date; Data Pulls stores this raw value instead. */
+  detectedAt: string | null;
+  /** Content Protection only: true when the match panel shows "Monetized" next to See post (seen
+   * live), else null -- absence isn't treated as a confirmed "no". Data Pulls only. */
+  monetized: boolean | null;
 }
 
 /** Optional fields on a COLLECT_CURRENT_MATCH_MESSAGE. `allowMissingPostLink` (data pulls only):

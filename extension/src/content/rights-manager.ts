@@ -136,6 +136,16 @@ if (isRightsManagerHost(location.hostname)) {
     return null;
   }
 
+  /** "Monetized" -- seen live (a screenshot of a News5 match) as its own label beside "See post" in
+   * the match panel. Exact element text, outside Facebook's own chrome. True or null: a match
+   * without the label isn't recorded as a confirmed "not monetized". */
+  function readMonetized(): boolean | null {
+    for (const el of document.querySelectorAll<HTMLElement>("span, div")) {
+      if (el.children.length === 0 && cleanText(el.textContent) === "Monetized" && !el.closest(FACEBOOK_CHROME_SELECTOR)) return true;
+    }
+    return null;
+  }
+
   function detectPageKind(): RightsManagerPageKind | null {
     if (isContentProtectionMatchPage()) return "content_protection";
     if (isLegacyRightsManagerPage()) return "legacy";
@@ -483,8 +493,12 @@ if (isRightsManagerHost(location.hostname)) {
       }
     }
 
-    const postedAt = readDetectedAtIso();
-    if (!postedAt) return { ok: false, error: 'Couldn\'t find/parse a "Detected <date>" value on this page.' };
+    // Confirmed live (a News5 match): a match with no reference-file card under "Matching segments"
+    // shows no "Detected" date anywhere. Rather than refusing to capture it, the evidence record is
+    // dated by capture time with a note saying so (the Copyright Archive requires a date -- team's
+    // call, 2026-10-07); the real detected date stays null for Data Pulls.
+    const detectedAt = readDetectedAtIso();
+    const postedAt = detectedAt ?? new Date().toISOString();
 
     const match: CapturedMatch = {
       metaMatchId: matchId,
@@ -495,7 +509,7 @@ if (isRightsManagerHost(location.hostname)) {
       infringingUrl,
       platform: detectPlatformFromUrl(infringingUrl),
       postedAt,
-      notes: "",
+      notes: detectedAt ? "" : "Meta didn't show a detected date on this match; dated by when it was captured.",
       matchDurationSec: readMatchDurationSec(),
       videoViewCount: findLabeledCount("views"),
       pageFollowerCount: findLabeledCount("followers"),
@@ -504,6 +518,8 @@ if (isRightsManagerHost(location.hostname)) {
       referenceFiles: findReferenceFiles(),
       videoAvailable: null,
       takedownStatus,
+      detectedAt,
+      monetized: readMonetized(),
     };
     if (match.referenceFiles.length === 0) {
       // The reference-asset card's link shape was only ever confirmed on the older layout
@@ -562,6 +578,8 @@ if (isRightsManagerHost(location.hostname)) {
       referenceFiles: mapReferenceFiles(raw),
       videoAvailable: null,
       takedownStatus: null,
+      detectedAt: null,
+      monetized: null,
     };
     return { ok: true, match };
   }
@@ -601,6 +619,8 @@ if (isRightsManagerHost(location.hostname)) {
       referenceFiles: [],
       videoAvailable: null,
       takedownStatus: null,
+      detectedAt: null,
+      monetized: null,
     };
     return { ok: true, match };
   }

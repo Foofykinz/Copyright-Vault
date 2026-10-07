@@ -60,6 +60,7 @@ export const onRequestPost: ApiHandler = async (context) => {
     const pageFollowerCount = optionalCount(body.pageFollowerCount, "pageFollowerCount");
     const referenceFiles = optionalReferenceFiles(body.referenceFiles);
     const takedownStatus = optionalTakedownStatus(body.takedownStatus);
+    const isMonetized = body.monetized === true ? 1 : null;
 
     const existing = await db.prepare("SELECT id FROM data_pulls WHERE meta_match_id = ?").bind(metaMatchId).first<{ id: string }>();
     const now = nowIso();
@@ -76,6 +77,7 @@ export const onRequestPost: ApiHandler = async (context) => {
       pageFollowerCount,
       referenceFiles.length > 0 ? JSON.stringify(referenceFiles) : null,
       takedownStatus,
+      isMonetized,
     ];
 
     let id: string;
@@ -83,7 +85,8 @@ export const onRequestPost: ApiHandler = async (context) => {
       id = existing.id;
       // A re-pull refreshes every value it actually has, but never blanks one out: if Meta's page
       // didn't show a value this time (or the post link is gone after a takedown went through), the
-      // value from an earlier pull is kept. Takedown status is the exception -- always the latest.
+      // value from an earlier pull is kept. Takedown status and monetized are the exception --
+      // always the latest, since they can genuinely change between pulls.
       await db
         .prepare(
           `UPDATE data_pulls SET
@@ -91,7 +94,7 @@ export const onRequestPost: ApiHandler = async (context) => {
              infringing_url = COALESCE(?, infringing_url), infringer_profile_url = COALESCE(?, infringer_profile_url),
              platform = ?, detected_at = COALESCE(?, detected_at), match_duration_sec = COALESCE(?, match_duration_sec),
              video_view_count = COALESCE(?, video_view_count), page_follower_count = COALESCE(?, page_follower_count),
-             reference_files = COALESCE(?, reference_files), takedown_status = ?, last_pulled_at = ?
+             reference_files = COALESCE(?, reference_files), takedown_status = ?, is_monetized = ?, last_pulled_at = ?
            WHERE id = ?`
         )
         .bind(...fields, now, id)
@@ -103,8 +106,8 @@ export const onRequestPost: ApiHandler = async (context) => {
           `INSERT INTO data_pulls
              (rights_manager_account_id, client_id, infringer_name, infringing_url, infringer_profile_url,
               platform, detected_at, match_duration_sec, video_view_count, page_follower_count,
-              reference_files, takedown_status, id, meta_match_id, first_pulled_at, last_pulled_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              reference_files, takedown_status, is_monetized, id, meta_match_id, first_pulled_at, last_pulled_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .bind(...fields, id, metaMatchId, now, now)
         .run();

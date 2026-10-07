@@ -82,8 +82,8 @@ interface State {
   /** Which interface the page is -- the automated Data pull is Content Protection only. */
   rightsManagerKind: RightsManagerPageKind | null;
   /** "evidence" = the manual capture -> review -> send (with screenshot) into the Copyright Archive;
-   * "data_pull" = the automated clickthrough into the Data Pulls table, no screenshots. Two separate
-   * purposes -- see popup/auto-capture.ts. */
+   * "data_pull" = the automated run, which saves every match to Data Pulls and (when it qualifies)
+   * an evidence record with screenshot to the Copyright Archive -- see popup/auto-capture.ts. */
   captureMode: "evidence" | "data_pull";
   rightsManagerAccounts: RightsManagerAccount[];
   selectedRightsManagerAccountId: string;
@@ -1403,6 +1403,7 @@ const autoCaptureDeps: AutoCaptureDeps = {
     rightsManagerAccountId: state.selectedRightsManagerAccountId,
     clientId: state.selectedClientId || null,
   }),
+  captureScreenshot: captureFullPageScreenshot,
   rerender: () => render(),
 };
 
@@ -1448,8 +1449,8 @@ function renderRightsManagerView(): HTMLElement {
   if (offerDataPull) {
     const modeField = el("div", { className: "field" }, [el("label", { textContent: "Mode" })]);
     for (const [value, label, hint] of [
-      ["evidence", "Evidence capture", "One match at a time, reviewed, with a screenshot → Copyright Archive"],
-      ["data_pull", "Data pull", "Automated clickthrough, match data only, no screenshots → Data Pulls"],
+      ["evidence", "Manual evidence capture", "One match at a time, reviewed, with a screenshot → Copyright Archive"],
+      ["data_pull", "Automated (Data Pulls + evidence)", "Clicks through matches: data → Data Pulls, evidence with screenshot → Copyright Archive"],
     ] as const) {
       const radio = el("input", { type: "radio", name: "capture-mode", value, checked: mode === value, disabled: running });
       radio.addEventListener("change", () => {
@@ -1460,7 +1461,7 @@ function renderRightsManagerView(): HTMLElement {
       });
       modeField.appendChild(el("label", { className: "flex-row", title: hint }, [radio, ` ${label}`]));
     }
-    modeField.appendChild(el("div", { className: "hint", textContent: mode === "evidence" ? "One match at a time, reviewed, with a screenshot → Copyright Archive." : "Automated clickthrough, match data only, no screenshots → Data Pulls." }));
+    modeField.appendChild(el("div", { className: "hint", textContent: mode === "evidence" ? "One match at a time, reviewed, with a screenshot → Copyright Archive." : "Clicks through matches: data → Data Pulls, evidence with screenshot → Copyright Archive." }));
     container.appendChild(modeField);
   }
 
@@ -1471,7 +1472,7 @@ function renderRightsManagerView(): HTMLElement {
         !state.selectedRightsManagerAccountId
           ? "Choose a Rights Manager account first."
           : state.capturedMatch || state.capturingMatch
-            ? "Finish or discard the evidence capture you're reviewing first."
+            ? "Finish or discard the manual capture you're reviewing first."
             : null
       )
     );

@@ -11,7 +11,7 @@ import { formatDisplayDate } from "../../shared/format";
 import { TAKEDOWN_STATUS_LABELS, type DataPullListParams, type DataPullWithNames, type TakedownStatus } from "../../shared/types";
 
 const PAGE_SIZE = 50;
-const COLUMN_COUNT = 11;
+const COLUMN_COUNT = 12;
 
 interface Filters {
   rightsManagerAccountId: string;
@@ -83,6 +83,7 @@ function DataPullRow({ pull }: { pull: DataPullWithNames }) {
           <span className="text-secondary">—</span>
         )}
       </td>
+      <td>{pull.monetized ? "Yes" : <span className="text-secondary">—</span>}</td>
       <td title={`First pulled ${new Date(pull.firstPulledAt).toLocaleString()}`}>{new Date(pull.lastPulledAt).toLocaleString()}</td>
     </tr>
   );
@@ -141,7 +142,7 @@ export function DataPullsPage() {
         <div>
           <h1 className="page-title">Data Pulls</h1>
           <div className="page-subtitle">
-            {total.toLocaleString()} match{total === 1 ? "" : "es"} pulled from Content Protection by the extension's automated data pull.
+            {total.toLocaleString()} match{total === 1 ? "" : "es"} pulled from Content Protection by the extension's automated run.
           </div>
         </div>
         <div className="page-actions">
@@ -205,6 +206,7 @@ export function DataPullsPage() {
               <th>Followers</th>
               <th>Reference files</th>
               <th>Takedown</th>
+              <th>Monetized</th>
               <th>Last pulled</th>
             </tr>
           </thead>
