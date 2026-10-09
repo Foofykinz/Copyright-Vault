@@ -244,6 +244,20 @@ export async function showMatchingFootage(tabId: number): Promise<ShowFootageRes
   }
 }
 
+function clock(seconds: number): string {
+  const s = Math.floor(seconds);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/** What the footage step did, for the log / review card -- always stated, success included, so every
+ * record shows whether its screenshot should have the matching footage in it. */
+export function footageNote(footage: ShowFootageResult): string {
+  if (!footage.ok) return `⚠ matching footage not shown (${footage.error})`;
+  return footage.playing
+    ? `footage playing at ${clock(footage.at)}`
+    : `⚠ footage at ${clock(footage.at)} but paused (Facebook may show its ▶ over it)`;
+}
+
 /** Why this match gets no evidence record, or null when it should get one. */
 function evidenceNotNeededReason(match: CapturedMatch): string | null {
   if (match.takedownStatus) return `${TAKEDOWN_STATUS_LABELS[match.takedownStatus]} — not needed`;
@@ -314,7 +328,7 @@ async function processCurrentMatch(tabId: number, windowId: number, lastMatchId:
       } else {
         setStep(`Showing the matching footage for ${match.metaMatchId}…`, deps);
         const footage = await showMatchingFootage(tabId);
-        if (!footage.ok) parts.push(`⚠ matching footage not shown (${footage.error})`);
+        parts.push(footageNote(footage));
         checkStop();
         setStep(`Screenshot of ${match.metaMatchId}…`, deps);
         const screenshot = await screenshotWithRetry(tabId, windowId, deps);

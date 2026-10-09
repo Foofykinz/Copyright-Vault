@@ -24,7 +24,7 @@ import { PLATFORM_LABELS } from "../../../shared/types";
 import { suggestFilename } from "../../../shared/format";
 import { centralDateString } from "../../../shared/dates";
 import { renderContentProtectionInspector } from "./content-protection-inspector";
-import { buildImportInput, isAutoCaptureRunning, renderAutoCapture, showMatchingFootage, type AutoCaptureDeps } from "./auto-capture";
+import { buildImportInput, footageNote, isAutoCaptureRunning, renderAutoCapture, showMatchingFootage, type AutoCaptureDeps } from "./auto-capture";
 
 const YOUTUBE_CATEGORY_LABELS: Record<"short" | "live" | "upload", string> = {
   short: "SHORTS",
@@ -1041,7 +1041,7 @@ async function collectCurrentMatch(): Promise<void> {
     // screenshot is still taken and the reviewer is told before sending.
     if (state.rightsManagerKind === "content_protection") {
       const footage = await showMatchingFootage(tab.id);
-      if (!footage.ok) state.matchStatus = `Heads up: the matching footage isn't showing in the screenshot (${footage.error}).`;
+      state.matchStatus = `Screenshot: ${footageNote(footage)}.`;
     }
     try {
       state.matchScreenshotDataUrl = await captureFullPageScreenshot(tab.id, tab.windowId);

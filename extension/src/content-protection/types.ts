@@ -19,11 +19,13 @@ export const INSPECT_CONTENT_PROTECTION_MESSAGE = "viral-drm-inspect-content-pro
 export const ADVANCE_TO_NEXT_MATCH_MESSAGE = "viral-drm-advance-to-next-match";
 
 /** Side panel -> content script, right before an evidence screenshot. Clicks the first "Matching
- * segments" chip so the match's video jumps to the matched footage, waits for that frame, and
- * pauses the video so the screenshot shows it (team request, 2026-10-09). */
+ * segments" chip so the match's video jumps to the matched footage and leaves it playing there for
+ * the screenshot (team request, 2026-10-09). */
 export const SHOW_MATCHING_FOOTAGE_MESSAGE = "viral-drm-show-matching-footage";
 
-export type ShowFootageResult = { ok: true; segment: string } | { ok: false; error: string };
+/** `at` = the video's position in seconds when it was ready; `playing` = false when Chrome refused
+ * playback, so the screenshot shows a paused frame (Facebook may draw its ▶ over it). */
+export type ShowFootageResult = { ok: true; segment: string; at: number; playing: boolean } | { ok: false; error: string };
 
 export type AdvanceResult =
   | { ok: true; fingerprint: MatchFingerprint }

@@ -39,10 +39,15 @@ function matchVideo(): HTMLVideoElement | null {
   return [...document.querySelectorAll("video")].find((v) => !isExcludedRegion(v) && isElementVisible(v)) ?? null;
 }
 
-/** Clicks the first matching-segment chip, waits until the video is showing a frame inside that
- * segment, and pauses it there so the screenshot holds that frame. Synthetic clicks don't count
- * as a user gesture, so Chrome may refuse to start playback -- the seek still lands and shows the
- * frame, which is all the screenshot needs, so either outcome is accepted.
+/** Clicks the first matching-segment chip, waits until the video is inside that segment, then makes
+ * sure it's PLAYING there for the screenshot.
+ *
+ * Playing, not paused (changed after the first live screenshots, 2026-10-09): Facebook's player
+ * keeps its own thumbnail and ▶ button drawn over the video until playback actually starts, and
+ * draws the ▶ again over a paused video -- a saved screenshot came back showing exactly that. So the
+ * video is started (muted only if it already is, never unmuted) and given a moment to actually move
+ * before the screenshot. If Chrome refuses playback (a synthetic click isn't a user gesture), the
+ * paused frame is still inside the segment and the result says playing: false.
  *
  * "Inside the segment" is the chip's own start-end range: a looser "near the start" check passed
  * in testing on a video that had merely played up toward the segment from 0:00 without seeking.
@@ -79,10 +84,23 @@ async function showMatchingFootage(): Promise<ShowFootageResult> {
       return { ok: false, error: err2 instanceof WaitTimeoutError ? "The matching footage didn't load in time." : errorMessage(err2) };
     }
   }
-  video.pause();
-  // One more beat so the paused frame (and Meta's player overlay) has painted before the shot.
-  await new Promise((resolve) => setTimeout(resolve, 400));
-  return { ok: true, segment: label.replace(/^view matching segment\s*/i, "") };
+  // Make sure it's playing, so Facebook drops its thumbnail/▶ overlay. Muted videos may always
+  // play; an unmuted one may be refused without a real user gesture -- left paused, never unmuted
+  // or muted on the user's behalf.
+  if (video.paused) await video.play().catch(() => undefined);
+  const startedAt = video.currentTime;
+  let playing = false;
+  try {
+    await waitForCondition("the video to start playing", () => (!video.paused && video.currentTime > startedAt + 0.3 ? true : null), {
+      timeoutMs: 4_000,
+    });
+    playing = true;
+  } catch {
+    playing = false; // refused or stalled -- the frame is still inside the segment
+  }
+  // A beat for Facebook's player to fade its overlay out once playback has visibly started.
+  await new Promise((resolve) => setTimeout(resolve, playing ? 700 : 300));
+  return { ok: true, segment: label.replace(/^view matching segment\s*/i, ""), at: Math.round(video.currentTime * 10) / 10, playing };
 }
 
 function errorMessage(err: unknown): string {
