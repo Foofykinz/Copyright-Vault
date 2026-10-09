@@ -34,6 +34,9 @@ import * as extensionInfringementReports from "../functions/api/extension/infrin
 import * as extensionDataPulls from "../functions/api/extension/data-pulls";
 import * as dataPullsIndex from "../functions/api/data-pulls/index";
 import * as dataPullsExport from "../functions/api/data-pulls/export";
+import * as ticketsIndex from "../functions/api/tickets/index";
+import * as ticketById from "../functions/api/tickets/byId";
+import * as ticketAttachment from "../functions/api/tickets/byId/attachment";
 import * as metadataLookup from "../functions/api/metadata/index";
 import * as youtubeChannelVideos from "../functions/api/youtube/channel-videos";
 import * as vimeoChannelVideos from "../functions/api/vimeo/channel-videos";
@@ -98,6 +101,11 @@ register("/api/extension/infringement-reports", extensionInfringementReports);
 register("/api/extension/data-pulls", extensionDataPulls);
 register("/api/data-pulls", dataPullsIndex);
 register("/api/data-pulls/export", dataPullsExport);
+// Tickets: submitting needs a normal session (the default gate below); every read/update route
+// also enforces requireTicketInboxAccess itself.
+register("/api/tickets", ticketsIndex);
+register("/api/tickets/:id", ticketById);
+register("/api/tickets/:id/attachment", ticketAttachment);
 register("/api/metadata", metadataLookup);
 register("/api/youtube/channel-videos", youtubeChannelVideos);
 register("/api/vimeo/channel-videos", vimeoChannelVideos);

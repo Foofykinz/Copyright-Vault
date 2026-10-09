@@ -12,8 +12,13 @@ import type {
   CreateInfringementReportInput,
   CreateVideoInput,
   DashboardStats,
+  CreateTicketInput,
   DataPullListParams,
   DataPullListResult,
+  Ticket,
+  TicketListResult,
+  TicketStatus,
+  UpdateTicketInput,
   DeadlineVideo,
   HuntSourceResult,
   InfringementReportListParams,
@@ -160,6 +165,15 @@ export const api = {
       const qs = buildInfringementReportQuery(filters);
       return `/api/infringement-reports/export${qs ? `?${qs}` : ""}`;
     },
+  },
+  tickets: {
+    /** Inbox owner only (server-enforced). */
+    list: (status?: TicketStatus) => request<TicketListResult>(`/tickets${status ? `?status=${status}` : ""}`),
+    /** Any staff member. Returns only the new id -- submitters never read tickets back. */
+    create: (input: CreateTicketInput) => post<{ id: string }>("/tickets", input),
+    update: (id: string, input: UpdateTicketInput) => patch<{ ticket: Ticket }>(`/tickets/${id}`, input),
+    remove: (id: string) => del(`/tickets/${id}`),
+    attachmentUrl: (id: string) => `/api/tickets/${id}/attachment`,
   },
   dataPulls: {
     list: (params: DataPullListParams) => {

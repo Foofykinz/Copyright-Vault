@@ -24,6 +24,10 @@ export interface SessionUser {
    * only here so the frontend can hide Vault Hunter's nav/UI for everyone else. It is never itself
    * the security boundary. */
   hunterAccess: boolean;
+  /** Server-enforced on every ticket read/update route (see functions/lib/ticketAuth.ts); here only
+   * so the frontend can show the ticket inbox to its owner and just the submit form to everyone
+   * else. */
+  ticketInboxAccess: boolean;
 }
 
 export interface Client {
@@ -864,4 +868,73 @@ export interface HunterQuotaStatus {
   candidatesDiscovered: number;
   uniqueCandidatesDiscovered: number;
   updatedAt: string;
+}
+
+// ---- Tickets (migration 0019) ----
+// Any staff member can submit one; only the inbox owner (users.ticket_inbox_access) can read them.
+
+export type TicketPriority = "low" | "normal" | "high" | "urgent";
+export type TicketCategory = "bug" | "extension" | "client_request" | "rights_manager" | "other";
+export type TicketStatus = "open" | "in_progress" | "closed";
+
+export const TICKET_PRIORITIES: TicketPriority[] = ["low", "normal", "high", "urgent"];
+export const TICKET_CATEGORIES: TicketCategory[] = ["bug", "extension", "client_request", "rights_manager", "other"];
+export const TICKET_STATUSES: TicketStatus[] = ["open", "in_progress", "closed"];
+
+export const TICKET_PRIORITY_LABELS: Record<TicketPriority, string> = {
+  low: "Low",
+  normal: "Normal",
+  high: "High",
+  urgent: "Urgent",
+};
+
+export const TICKET_CATEGORY_LABELS: Record<TicketCategory, string> = {
+  bug: "Bug / something broken",
+  extension: "Extension",
+  client_request: "Client request",
+  rights_manager: "Rights Manager / matches",
+  other: "Other",
+};
+
+export const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
+  open: "Open",
+  in_progress: "In progress",
+  closed: "Closed",
+};
+
+export interface Ticket {
+  id: string;
+  title: string;
+  description: string;
+  priority: TicketPriority;
+  category: TicketCategory;
+  status: TicketStatus;
+  createdByUserId: string;
+  createdByName: string;
+  hasAttachment: boolean;
+  /** When the inbox owner first opened it; null = new. */
+  seenAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTicketInput {
+  title: string;
+  description: string;
+  priority: TicketPriority;
+  category: TicketCategory;
+  /** Optional screenshot as a data URL (image/png, image/jpeg, image/webp, image/gif). */
+  screenshotDataUrl?: string | null;
+}
+
+export interface UpdateTicketInput {
+  status?: TicketStatus;
+  /** true marks it seen (opened); sets seenAt if it isn't set yet. */
+  seen?: boolean;
+}
+
+export interface TicketListResult {
+  tickets: Ticket[];
+  /** Tickets not yet opened by the inbox owner -- drives the sidebar badge. */
+  unseenCount: number;
 }

@@ -9,6 +9,7 @@ interface UserRow {
   username: string;
   must_change_password: number;
   hunter_access: number;
+  ticket_inbox_access: number;
 }
 
 export const onRequestGet: ApiHandler = async (context) => {
@@ -16,7 +17,7 @@ export const onRequestGet: ApiHandler = async (context) => {
     const userId = await verifySession(context.request, context.env);
     if (!userId) throw new UnauthorizedError("Not logged in.");
 
-    const row = await context.env.DB.prepare("SELECT id, name, username, must_change_password, hunter_access FROM users WHERE id = ?")
+    const row = await context.env.DB.prepare("SELECT id, name, username, must_change_password, hunter_access, ticket_inbox_access FROM users WHERE id = ?")
       .bind(userId)
       .first<UserRow>();
     if (!row) throw new UnauthorizedError("Not logged in.");
@@ -27,6 +28,7 @@ export const onRequestGet: ApiHandler = async (context) => {
       username: row.username,
       mustChangePassword: row.must_change_password === 1,
       hunterAccess: row.hunter_access === 1,
+      ticketInboxAccess: row.ticket_inbox_access === 1,
     };
     return json({ user });
   } catch (err) {

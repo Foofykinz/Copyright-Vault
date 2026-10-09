@@ -16,6 +16,7 @@ interface UserRow {
   failed_attempts: number;
   locked_until: string | null;
   hunter_access: number;
+  ticket_inbox_access: number;
 }
 
 const MAX_FAILED_ATTEMPTS = 5;
@@ -61,6 +62,7 @@ export const onRequestPost: ApiHandler = async (context) => {
       username: row.username,
       mustChangePassword: row.must_change_password === 1,
       hunterAccess: row.hunter_access === 1,
+      ticketInboxAccess: row.ticket_inbox_access === 1,
     };
     return json({ user }, { headers: { "set-cookie": cookie } });
   } catch (err) {

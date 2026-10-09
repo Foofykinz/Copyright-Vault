@@ -10,6 +10,7 @@ import { RightsManagerHistoryPage } from "./pages/RightsManagerHistoryPage";
 import { RightsManagerArchivePage } from "./pages/RightsManagerArchivePage";
 import { InfringementReportsPage } from "./pages/InfringementReportsPage";
 import { DataPullsPage } from "./pages/DataPullsPage";
+import { TicketsPage } from "./pages/TicketsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DeadlinesPage } from "./pages/DeadlinesPage";
 import { ExtensionPage } from "./pages/ExtensionPage";
@@ -54,6 +55,7 @@ export default function App() {
               <Route path="/clients/:clientId/rights-manager" element={<RightsManagerHistoryPage />} />
               <Route path="/rights-manager" element={<RightsManagerArchivePage />} />
               <Route path="/data-pulls" element={<DataPullsPage />} />
+              <Route path="/tickets" element={<TicketsPage />} />
               <Route path="/infringements" element={<InfringementReportsPage />} />
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/deadlines" element={<DeadlinesPage />} />

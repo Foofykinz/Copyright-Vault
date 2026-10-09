@@ -3,6 +3,8 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useClients, useClientMutations } from "../hooks/useClients";
 import { ClientFormModal } from "./ClientFormModal";
 import { ChangePasswordModal } from "./ChangePasswordModal";
+import { api } from "../lib/api";
+import { TICKETS_CHANGED_EVENT } from "../lib/ticketEvents";
 import type { Client, SessionUser } from "../../shared/types";
 
 function ClientPicker({ clients, loading }: { clients: Client[]; loading: boolean }) {
@@ -79,8 +81,35 @@ function ClientPicker({ clients, loading }: { clients: Client[]; loading: boolea
   );
 }
 
+/** "New" ticket count for the inbox owner's sidebar badge -- refreshed on every navigation and
+ * whenever a ticket changes. Never requested for anyone else (the API would refuse anyway). */
+function useUnseenTicketCount(enabled: boolean): number {
+  const location = useLocation();
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    const load = () => {
+      api.tickets
+        .list("open")
+        .then((r) => {
+          if (!cancelled) setCount(r.unseenCount);
+        })
+        .catch(() => {});
+    };
+    load();
+    window.addEventListener(TICKETS_CHANGED_EVENT, load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(TICKETS_CHANGED_EVENT, load);
+    };
+  }, [enabled, location.pathname]);
+  return count;
+}
+
 export function Sidebar({ user, onLogout }: { user: SessionUser; onLogout: () => Promise<void> }) {
   const { clients, loading: clientsLoading, refetch: refetchClients } = useClients();
+  const unseenTickets = useUnseenTicketCount(user.ticketInboxAccess);
   const { create } = useClientMutations(refetchClients);
   const [addingClient, setAddingClient] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
@@ -124,6 +153,16 @@ export function Sidebar({ user, onLogout }: { user: SessionUser; onLogout: () =>
           <li>
             <NavLink to="/extension" className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}>
               Extensions &amp; Tools
+            </NavLink>
+          </li>
+          <li>
+            <NavLink to="/tickets" className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}>
+              <span style={{ flex: 1 }}>Tickets</span>
+              {unseenTickets > 0 && (
+                <span className="badge badge-amber" title={`${unseenTickets} new ticket${unseenTickets === 1 ? "" : "s"}`}>
+                  {unseenTickets}
+                </span>
+              )}
             </NavLink>
           </li>
         </ul>
