@@ -127,6 +127,9 @@ const EMPTY_COUNTS: Counts = { dataNew: 0, dataUpdated: 0, evidenceSaved: 0, evi
 
 interface RunState {
   phase: "idle" | "running" | "stopping" | "finished";
+  /** false = "Data pull only" mode: Data Pulls rows only, no screenshots or evidence records. Fixed
+   * for the whole run at Start. */
+  withEvidence: boolean;
   counts: Counts;
   log: LogEntry[];
   step: string | null;
@@ -136,6 +139,7 @@ interface RunState {
 
 const run: RunState = {
   phase: "idle",
+  withEvidence: true,
   counts: { ...EMPTY_COUNTS },
   log: [],
   step: null,
@@ -145,6 +149,12 @@ const run: RunState = {
 
 export function isAutoCaptureRunning(): boolean {
   return run.phase === "running" || run.phase === "stopping";
+}
+
+/** Which automated mode the current (or last) run is in -- lets the side panel keep showing the
+ * right mode while a run is going. */
+export function autoCaptureRunHasEvidence(): boolean {
+  return run.withEvidence;
 }
 
 class StopRun extends Error {
@@ -312,9 +322,11 @@ async function processCurrentMatch(tabId: number, windowId: number, lastMatchId:
     parts.push(`Data: FAILED (${errorText(err)})`);
   }
 
-  // -- Evidence (Copyright Archive, with screenshot)
-  const notNeeded = evidenceNotNeededReason(match);
-  if (notNeeded) {
+  // -- Evidence (Copyright Archive, with screenshot) -- not at all in "Data pull only" mode
+  const notNeeded = run.withEvidence ? evidenceNotNeededReason(match) : null;
+  if (!run.withEvidence) {
+    // Data pull only: nothing to say about evidence on each line.
+  } else if (notNeeded) {
     run.counts.evidenceNotNeeded++;
     parts.push(`Evidence: ${notNeeded}`);
   } else {
@@ -365,7 +377,14 @@ async function runLoop(tabId: number, windowId: number, deps: AutoCaptureDeps): 
     // screenshot now would capture the wrong page.
     const tab = await chrome.tabs.get(tabId).catch(() => null);
     if (!tab) throw new StopRun("error", "The Content Protection tab was closed.");
-    if (!tab.active) throw new StopRun("stopped", "You switched away from the Content Protection tab, so the run stopped (a screenshot would have captured the wrong page). Switch back and press Start to continue from this match.");
+    // Also matters in data-pull-only mode: Chrome throttles background tabs, so a match could be read
+    // before it had finished loading.
+    if (!tab.active) {
+      throw new StopRun(
+        "stopped",
+        `You switched away from the Content Protection tab, so the run stopped${run.withEvidence ? " (a screenshot would have captured the wrong page)" : ""}. Switch back and press Start to continue from this match.`
+      );
+    }
 
     const detected = await sendToTab<DetectRightsManagerPageResult>(tabId, { type: DETECT_RIGHTS_MANAGER_PAGE_MESSAGE }, 5000, "checking the page");
     if (!detected.recognized || detected.kind !== "content_protection") {
@@ -393,13 +412,14 @@ async function runLoop(tabId: number, windowId: number, deps: AutoCaptureDeps): 
   }
 }
 
-async function start(deps: AutoCaptureDeps): Promise<void> {
+async function start(deps: AutoCaptureDeps, withEvidence: boolean): Promise<void> {
   if (isAutoCaptureRunning()) return;
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id || tab.windowId === undefined) return;
 
   Object.assign(run, {
     phase: "running",
+    withEvidence,
     counts: { ...EMPTY_COUNTS },
     log: [],
     step: null,
@@ -429,9 +449,11 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEle
 
 const OUTCOME_ICONS: Record<Outcome, string> = { ok: "✅", skipped: "⏭", error: "⚠" };
 
-/** Start/Stop + live progress. `disabledReason` (e.g. no Rights Manager account chosen, a match
- * being reviewed manually) blocks Start without hiding the last run's results. */
-export function renderAutoCapture(deps: AutoCaptureDeps, disabledReason: string | null): HTMLElement {
+/** Start/Stop + live progress. `withEvidence` is the mode Start would begin (Data Pulls + evidence,
+ * or data pull only); a run in progress keeps its own. `disabledReason` (e.g. no Rights Manager
+ * account chosen, a match being reviewed manually) blocks Start without hiding the last run's
+ * results. */
+export function renderAutoCapture(deps: AutoCaptureDeps, disabledReason: string | null, withEvidence: boolean): HTMLElement {
   const container = h("div", { className: "field auto-capture" });
   const running = isAutoCaptureRunning();
 
@@ -444,15 +466,22 @@ export function renderAutoCapture(deps: AutoCaptureDeps, disabledReason: string 
     container.append(stopBtn, h("div", { className: "hint", textContent: run.step ?? "Working…" }));
     container.appendChild(h("div", { className: "warning", textContent: "Keep this tab in front and this panel open until it finishes." }));
   } else {
-    const startBtn = h("button", { className: "primary", textContent: "Start Automated Capture", disabled: disabledReason !== null });
-    startBtn.addEventListener("click", () => void start(deps));
+    const startBtn = h("button", {
+      className: "primary",
+      textContent: withEvidence ? "Start Automated Capture" : "Start Data Pull",
+      disabled: disabledReason !== null,
+    });
+    startBtn.addEventListener("click", () => void start(deps, withEvidence));
     container.appendChild(startBtn);
+    const what = withEvidence
+      ? "saves its data to Data Pulls, and saves an evidence record with a screenshot to the Copyright Archive (skipped when a takedown is already requested/approved, or it's already logged)"
+      : "saves its data to Data Pulls only — no screenshots, nothing added to the Copyright Archive";
     container.appendChild(
       h("div", {
         className: "hint",
         textContent:
           disabledReason ??
-          `For each match: saves its data to Data Pulls, and saves an evidence record with a screenshot to the Copyright Archive (skipped when a takedown is already requested/approved, or it's already logged). Then clicks Next — up to ${MAX_MATCHES_PER_RUN} matches per run, pausing ${MIN_PAUSE_MS / 1000}–${MAX_PAUSE_MS / 1000}s on each. Skips non-public reels. Never clicks anything except Next.`,
+          `For each match: ${what}. Then clicks Next — up to ${MAX_MATCHES_PER_RUN} matches per run, pausing ${MIN_PAUSE_MS / 1000}–${MAX_PAUSE_MS / 1000}s on each. Skips non-public reels. Never clicks anything except Next.`,
       })
     );
   }
@@ -462,7 +491,9 @@ export function renderAutoCapture(deps: AutoCaptureDeps, disabledReason: string 
     container.appendChild(
       h("div", { className: "hint" }, [
         h("div", { textContent: `Data Pulls: ${c.dataNew} new · ${c.dataUpdated} updated` }),
-        h("div", { textContent: `Evidence: ${c.evidenceSaved} saved · ${c.evidenceAlready} already logged · ${c.evidenceNotNeeded} not needed` }),
+        run.withEvidence
+          ? h("div", { textContent: `Evidence: ${c.evidenceSaved} saved · ${c.evidenceAlready} already logged · ${c.evidenceNotNeeded} not needed` })
+          : h("div", { textContent: "Evidence: off (data pull only)" }),
         h("div", { textContent: `Non-public skipped ${c.nonPublic} · Errors ${c.errors}` }),
       ])
     );

@@ -24,7 +24,15 @@ import { PLATFORM_LABELS } from "../../../shared/types";
 import { suggestFilename } from "../../../shared/format";
 import { centralDateString } from "../../../shared/dates";
 import { renderContentProtectionInspector } from "./content-protection-inspector";
-import { buildImportInput, footageNote, isAutoCaptureRunning, renderAutoCapture, showMatchingFootage, type AutoCaptureDeps } from "./auto-capture";
+import {
+  autoCaptureRunHasEvidence,
+  buildImportInput,
+  footageNote,
+  isAutoCaptureRunning,
+  renderAutoCapture,
+  showMatchingFootage,
+  type AutoCaptureDeps,
+} from "./auto-capture";
 
 const YOUTUBE_CATEGORY_LABELS: Record<"short" | "live" | "upload", string> = {
   short: "SHORTS",
@@ -82,9 +90,10 @@ interface State {
   /** Which interface the page is -- the automated Data pull is Content Protection only. */
   rightsManagerKind: RightsManagerPageKind | null;
   /** "evidence" = the manual capture -> review -> send (with screenshot) into the Copyright Archive;
-   * "data_pull" = the automated run, which saves every match to Data Pulls and (when it qualifies)
-   * an evidence record with screenshot to the Copyright Archive -- see popup/auto-capture.ts. */
-  captureMode: "evidence" | "data_pull";
+   * "data_pull" = the automated run, saving every match to Data Pulls and (when it qualifies) an
+   * evidence record with screenshot to the Copyright Archive; "data_pull_only" = the same automated
+   * run with no screenshots or evidence records at all -- Data Pulls only. See popup/auto-capture.ts. */
+  captureMode: "evidence" | "data_pull" | "data_pull_only";
   rightsManagerAccounts: RightsManagerAccount[];
   selectedRightsManagerAccountId: string;
   capturedMatch: CapturedMatch | null;
@@ -1404,6 +1413,16 @@ function renderMatchReviewCard(match: CapturedMatch): HTMLElement {
   return container;
 }
 
+const MODE_OPTIONS: readonly (readonly [State["captureMode"], string, string])[] = [
+  ["evidence", "Manual evidence capture", "One match at a time, reviewed, with a screenshot → Copyright Archive."],
+  ["data_pull", "Automated: Data Pulls + evidence", "Clicks through matches: data → Data Pulls, evidence with screenshot → Copyright Archive."],
+  [
+    "data_pull_only",
+    "Automated: data pull only",
+    "Clicks through matches: data → Data Pulls only. No screenshots, nothing added to the Copyright Archive.",
+  ],
+];
+
 const autoCaptureDeps: AutoCaptureDeps = {
   getSendContext: () => ({
     config: { apiBaseUrl: state.apiBaseUrl, apiToken: state.apiToken },
@@ -1452,13 +1471,11 @@ function renderRightsManagerView(): HTMLElement {
   // Data pull is Content Protection only (classic Rights Manager has no Next-button flow), so the
   // choice is only offered there; anywhere else it's evidence capture, same as always.
   const offerDataPull = state.rightsManagerKind === "content_protection" || running;
-  const mode = offerDataPull ? state.captureMode : "evidence";
+  // A run in progress shows the mode it was started in, whatever's selected.
+  const mode: State["captureMode"] = running ? (autoCaptureRunHasEvidence() ? "data_pull" : "data_pull_only") : offerDataPull ? state.captureMode : "evidence";
   if (offerDataPull) {
     const modeField = el("div", { className: "field" }, [el("label", { textContent: "Mode" })]);
-    for (const [value, label, hint] of [
-      ["evidence", "Manual evidence capture", "One match at a time, reviewed, with a screenshot → Copyright Archive"],
-      ["data_pull", "Automated (Data Pulls + evidence)", "Clicks through matches: data → Data Pulls, evidence with screenshot → Copyright Archive"],
-    ] as const) {
+    for (const [value, label, hint] of MODE_OPTIONS) {
       const radio = el("input", { type: "radio", name: "capture-mode", value, checked: mode === value, disabled: running });
       radio.addEventListener("change", () => {
         state.captureMode = value;
@@ -1468,11 +1485,11 @@ function renderRightsManagerView(): HTMLElement {
       });
       modeField.appendChild(el("label", { className: "flex-row", title: hint }, [radio, ` ${label}`]));
     }
-    modeField.appendChild(el("div", { className: "hint", textContent: mode === "evidence" ? "One match at a time, reviewed, with a screenshot → Copyright Archive." : "Clicks through matches: data → Data Pulls, evidence with screenshot → Copyright Archive." }));
+    modeField.appendChild(el("div", { className: "hint", textContent: MODE_OPTIONS.find(([v]) => v === mode)![2] }));
     container.appendChild(modeField);
   }
 
-  if (mode === "data_pull") {
+  if (mode === "data_pull" || mode === "data_pull_only") {
     container.appendChild(
       renderAutoCapture(
         autoCaptureDeps,
@@ -1480,7 +1497,8 @@ function renderRightsManagerView(): HTMLElement {
           ? "Choose a Rights Manager account first."
           : state.capturedMatch || state.capturingMatch
             ? "Finish or discard the manual capture you're reviewing first."
-            : null
+            : null,
+        mode === "data_pull"
       )
     );
   } else if (!state.capturedMatch) {
