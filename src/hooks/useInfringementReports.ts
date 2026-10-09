@@ -3,15 +3,17 @@ import { api } from "../lib/api";
 import { useAsync } from "./useAsync";
 import type { CreateInfringementReportInput, InfringementStatus, UpdateInfringementReportInput } from "../../shared/types";
 
-export function useInfringementReports(statusFilter: InfringementStatus | "all", matchId?: string) {
-  const trimmedMatchId = matchId?.trim() || undefined;
+/** Backs the Infringements tab: hand-entered (Quick Add) reports only. Extension captures
+ * (source "rights_manager") live on the Rights Manager tab instead, with their screenshots and
+ * Match IDs -- team's call, 2026-10-09, so the same record isn't listed in two places. */
+export function useInfringementReports(statusFilter: InfringementStatus | "all") {
   const { data, loading, error, refetch } = useAsync(
     () =>
       api.infringementReports.list({
+        source: "manual",
         ...(statusFilter === "all" ? {} : { status: statusFilter }),
-        ...(trimmedMatchId ? { matchId: trimmedMatchId } : {}),
       }),
-    [statusFilter, trimmedMatchId]
+    [statusFilter]
   );
   return { infringementReports: data?.infringementReports ?? [], loading, error, refetch };
 }

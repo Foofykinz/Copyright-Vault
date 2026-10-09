@@ -18,6 +18,13 @@ export const INSPECT_CONTENT_PROTECTION_MESSAGE = "viral-drm-inspect-content-pro
  * rendered. */
 export const ADVANCE_TO_NEXT_MATCH_MESSAGE = "viral-drm-advance-to-next-match";
 
+/** Side panel -> content script, right before an evidence screenshot. Clicks the first "Matching
+ * segments" chip so the match's video jumps to the matched footage, waits for that frame, and
+ * pauses the video so the screenshot shows it (team request, 2026-10-09). */
+export const SHOW_MATCHING_FOOTAGE_MESSAGE = "viral-drm-show-matching-footage";
+
+export type ShowFootageResult = { ok: true; segment: string } | { ok: false; error: string };
+
 export type AdvanceResult =
   | { ok: true; fingerprint: MatchFingerprint }
   | {
@@ -291,4 +298,7 @@ export interface ContentProtectionAdapter {
   /** Clicks Next (strict name whitelist + forbidden-action check) and waits for the next match to
    * fully render. The only thing in this module that clicks anything. */
   advanceToNextMatch(): Promise<AdvanceResult>;
+  /** Clicks the first matching-segment chip (strict name whitelist + forbidden-action check),
+   * waits for the video to show that footage, and pauses it. */
+  showMatchingFootage(): Promise<ShowFootageResult>;
 }

@@ -6,9 +6,11 @@ import { createContentProtectionAdapter, type ContentProtectionAdapterDeps } fro
 import {
   ADVANCE_TO_NEXT_MATCH_MESSAGE,
   INSPECT_CONTENT_PROTECTION_MESSAGE,
+  SHOW_MATCHING_FOOTAGE_MESSAGE,
   type AdvanceResult,
   type ContentProtectionAdapter,
   type InspectResult,
+  type ShowFootageResult,
 } from "./types";
 
 export function registerContentProtectionInspector(deps: ContentProtectionAdapterDeps): ContentProtectionAdapter {
@@ -23,6 +25,14 @@ export function registerContentProtectionInspector(deps: ContentProtectionAdapte
         .then((diagnostic) => sendResponse({ ok: true, diagnostic } satisfies InspectResult))
         .catch((err: unknown) => sendResponse({ ok: false, error: err instanceof Error ? err.message : String(err) } satisfies InspectResult));
       return true; // async sendResponse
+    }
+
+    if (message?.type === SHOW_MATCHING_FOOTAGE_MESSAGE) {
+      adapter
+        .showMatchingFootage()
+        .catch((err: unknown): ShowFootageResult => ({ ok: false, error: err instanceof Error ? err.message : String(err) }))
+        .then((result) => sendResponse(result));
+      return true;
     }
 
     if (message?.type === ADVANCE_TO_NEXT_MATCH_MESSAGE) {

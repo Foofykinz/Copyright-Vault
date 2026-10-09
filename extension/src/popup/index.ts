@@ -24,7 +24,7 @@ import { PLATFORM_LABELS } from "../../../shared/types";
 import { suggestFilename } from "../../../shared/format";
 import { centralDateString } from "../../../shared/dates";
 import { renderContentProtectionInspector } from "./content-protection-inspector";
-import { buildImportInput, isAutoCaptureRunning, renderAutoCapture, type AutoCaptureDeps } from "./auto-capture";
+import { buildImportInput, isAutoCaptureRunning, renderAutoCapture, showMatchingFootage, type AutoCaptureDeps } from "./auto-capture";
 
 const YOUTUBE_CATEGORY_LABELS: Record<"short" | "live" | "upload", string> = {
   short: "SHORTS",
@@ -1036,6 +1036,13 @@ async function collectCurrentMatch(): Promise<void> {
     // Match capture succeeded — this is kept even if the screenshot step below fails, since the
     // screenshot is optional server-side and a failure there shouldn't discard a good capture.
     state.capturedMatch = result.match;
+    // Content Protection evidence shows the infringer's matching footage: jump the video to the
+    // first matching segment before the screenshot. Not blocking -- if it doesn't load, the
+    // screenshot is still taken and the reviewer is told before sending.
+    if (state.rightsManagerKind === "content_protection") {
+      const footage = await showMatchingFootage(tab.id);
+      if (!footage.ok) state.matchStatus = `Heads up: the matching footage isn't showing in the screenshot (${footage.error}).`;
+    }
     try {
       state.matchScreenshotDataUrl = await captureFullPageScreenshot(tab.id, tab.windowId);
     } catch (err) {

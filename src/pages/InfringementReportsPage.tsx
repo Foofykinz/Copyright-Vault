@@ -190,8 +190,7 @@ function ReportRow({ report, onChanged }: { report: InfringementReportWithNames;
 
 export function InfringementReportsPage() {
   const [tab, setTab] = useState<InfringementStatus | "all">("needs_review");
-  const [matchIdSearch, setMatchIdSearch] = useState("");
-  const { infringementReports, loading, refetch } = useInfringementReports(tab, matchIdSearch);
+  const { infringementReports, loading, refetch } = useInfringementReports(tab);
 
   return (
     <div>
@@ -211,13 +210,6 @@ export function InfringementReportsPage() {
             {TAB_LABELS[t]}
           </button>
         ))}
-        <input
-          type="text"
-          placeholder="Search by match ID"
-          value={matchIdSearch}
-          onChange={(e) => setMatchIdSearch(e.target.value)}
-          style={{ width: 200, marginLeft: "auto" }}
-        />
       </div>
 
       {loading ? (

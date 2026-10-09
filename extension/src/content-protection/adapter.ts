@@ -3,17 +3,18 @@
  * parser rather than reimplemented, so automation and the manual "Capture this match" button
  * always produce the same record.
  *
- * advanceToNextMatch() is the ONLY thing in this module that clicks anything, and it only ever
- * clicks a control whose accessible name is exactly "Next" / "Next match" that also passes the
- * forbidden-action check -- a whitelist on top of the blacklist, never just one of them. */
+ * Only two things in this module click anything, each gated by a whitelist on top of the
+ * forbidden-action blacklist, never just one of them: advanceToNextMatch() clicks only a control
+ * named exactly "Next" / "Next match", and showMatchingFootage() clicks only a "View matching
+ * segment ..." chip, which just seeks the match's video player. */
 import type { CapturedMatch, CollectMatchResult } from "../lib/rights-manager-scraped";
 import { matchIdFromUrl } from "../lib/rights-manager-parse";
-import type { AdvanceResult, ContentProtectionAdapter, MatchFingerprint } from "./types";
+import type { AdvanceResult, ContentProtectionAdapter, MatchFingerprint, ShowFootageResult } from "./types";
 import { detectContentProtectionPage } from "./detector";
 import { inspectPage } from "./inspector";
 import { buildPageModel, isExcludedRegion } from "./page-model";
 import { discoverNavigation, pickNextControl } from "./navigation";
-import { cleanText, waitForCondition, waitForStableDOM, WaitTimeoutError } from "./dom";
+import { cleanText, isElementVisible, waitForCondition, waitForStableDOM, WaitTimeoutError } from "./dom";
 import { accessibleName, isForbiddenControl, looksLikeMatchedContentUrl, PROTECTION_DETAILS_PATH, sanitizeUrl } from "./selectors";
 
 export interface ContentProtectionAdapterDeps {
@@ -23,6 +24,70 @@ export interface ContentProtectionAdapterDeps {
 /** The only names advanceToNextMatch() will click. Confirmed live: the match panel's button is
  * role="button" aria-label="Next". */
 const NEXT_NAME_WHITELIST = /^(next|next match)$/i;
+
+/** The only names showMatchingFootage() will click. Confirmed live: each "Matching segments" chip is
+ * role="button" aria-label="View matching segment 00:11 - 00:31, 20s". Groups: start, end. */
+const SEGMENT_NAME_WHITELIST = /^view matching segment (\d{1,2}(?::\d{2}){1,2})\s*[-–—]\s*(\d{1,2}(?::\d{2}){1,2})/i;
+
+function clockToSeconds(clock: string): number {
+  return clock.split(":").reduce((total, part) => total * 60 + Number(part), 0);
+}
+
+/** The match's own video -- the infringer's footage in the left match panel. Reference thumbnails
+ * are images, so the first visible <video> outside Facebook's chrome is it. */
+function matchVideo(): HTMLVideoElement | null {
+  return [...document.querySelectorAll("video")].find((v) => !isExcludedRegion(v) && isElementVisible(v)) ?? null;
+}
+
+/** Clicks the first matching-segment chip, waits until the video is showing a frame inside that
+ * segment, and pauses it there so the screenshot holds that frame. Synthetic clicks don't count
+ * as a user gesture, so Chrome may refuse to start playback -- the seek still lands and shows the
+ * frame, which is all the screenshot needs, so either outcome is accepted.
+ *
+ * "Inside the segment" is the chip's own start-end range: a looser "near the start" check passed
+ * in testing on a video that had merely played up toward the segment from 0:00 without seeking.
+ * If the click hasn't put the player there within a few seconds, the video is seeked directly as
+ * a fallback -- it only changes the playback position, which is all a viewer could do anyway. */
+async function showMatchingFootage(): Promise<ShowFootageResult> {
+  const chip = [...document.querySelectorAll<HTMLElement>('[role="button"][aria-label]')].find(
+    (el) => SEGMENT_NAME_WHITELIST.test(cleanText(el.getAttribute("aria-label"))) && !isExcludedRegion(el) && isElementVisible(el)
+  );
+  if (!chip) return { ok: false, error: "No matching-segment button on this page." };
+  const label = cleanText(chip.getAttribute("aria-label"));
+  if (isForbiddenControl(`${label} ${cleanText(chip.textContent)}`, chip)) {
+    return { ok: false, error: `Refused to click "${label}" — it isn't just a segment button.` };
+  }
+  const video = matchVideo();
+  if (!video) return { ok: false, error: "Couldn't find the match's video." };
+
+  const [, startClock, endClock] = SEGMENT_NAME_WHITELIST.exec(label)!;
+  const segmentStart = clockToSeconds(startClock);
+  const segmentEnd = clockToSeconds(endClock);
+  const showingSegment = () =>
+    video.readyState >= 2 && !video.seeking && video.currentTime >= segmentStart - 0.5 && video.currentTime <= segmentEnd + 1 ? true : null;
+
+  activate(chip);
+  try {
+    await waitForCondition("the matching footage after clicking the segment", showingSegment, { timeoutMs: 5_000 });
+  } catch (err) {
+    if (!(err instanceof WaitTimeoutError)) return { ok: false, error: errorMessage(err) };
+    // Fallback: seek the player straight to just inside the segment.
+    video.currentTime = Math.min(segmentStart + 0.5, segmentEnd);
+    try {
+      await waitForCondition("the matching footage", showingSegment, { timeoutMs: 8_000 });
+    } catch (err2) {
+      return { ok: false, error: err2 instanceof WaitTimeoutError ? "The matching footage didn't load in time." : errorMessage(err2) };
+    }
+  }
+  video.pause();
+  // One more beat so the paused frame (and Meta's player overlay) has painted before the shot.
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  return { ok: true, segment: label.replace(/^view matching segment\s*/i, "") };
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 /** Cheap -- doesn't build a full PageModel, since waits call this on every mutation. */
 function currentFingerprint(): MatchFingerprint {
@@ -129,6 +194,7 @@ export function createContentProtectionAdapter(deps: ContentProtectionAdapterDep
     findNextControl: () => pickNextControl(buildPageModel().controls),
     fingerprint: currentFingerprint,
     waitForMatchChange: (previous, options = {}) => waitForNextMatch(toFingerprint(previous), null, options.timeoutMs ?? 15_000),
+    showMatchingFootage,
 
     async advanceToNextMatch(): Promise<AdvanceResult> {
       const model = buildPageModel();

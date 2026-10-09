@@ -24,7 +24,12 @@ import {
   type CollectMatchResult,
   type DetectRightsManagerPageResult,
 } from "../lib/rights-manager-scraped";
-import { ADVANCE_TO_NEXT_MATCH_MESSAGE, type AdvanceResult } from "../content-protection/types";
+import {
+  ADVANCE_TO_NEXT_MATCH_MESSAGE,
+  SHOW_MATCHING_FOOTAGE_MESSAGE,
+  type AdvanceResult,
+  type ShowFootageResult,
+} from "../content-protection/types";
 import type { ExtensionDataPullInput, ExtensionInfringementReportImportInput } from "../../../shared/types";
 import { TAKEDOWN_STATUS_LABELS } from "../../../shared/types";
 
@@ -223,6 +228,22 @@ async function screenshotWithRetry(tabId: number, windowId: number, deps: AutoCa
   }
 }
 
+/** Right before an evidence screenshot: has the content script click the first "Matching
+ * segments" chip so the match's video shows the matched footage, then pause on it. Shared with the
+ * manual capture in popup/index.ts. Never throws -- a failure means a screenshot without the
+ * footage, which the caller flags rather than losing the record over. */
+export async function showMatchingFootage(tabId: number): Promise<ShowFootageResult> {
+  try {
+    const result = await Promise.race([
+      chrome.tabs.sendMessage(tabId, { type: SHOW_MATCHING_FOOTAGE_MESSAGE }) as Promise<ShowFootageResult | undefined>,
+      new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 15_000)),
+    ]);
+    return result ?? { ok: false, error: "The page didn't respond." };
+  } catch (err) {
+    return { ok: false, error: errorText(err) };
+  }
+}
+
 /** Why this match gets no evidence record, or null when it should get one. */
 function evidenceNotNeededReason(match: CapturedMatch): string | null {
   if (match.takedownStatus) return `${TAKEDOWN_STATUS_LABELS[match.takedownStatus]} — not needed`;
@@ -291,6 +312,10 @@ async function processCurrentMatch(tabId: number, windowId: number, lastMatchId:
         run.counts.evidenceAlready++;
         parts.push("Evidence: already logged");
       } else {
+        setStep(`Showing the matching footage for ${match.metaMatchId}…`, deps);
+        const footage = await showMatchingFootage(tabId);
+        if (!footage.ok) parts.push(`⚠ matching footage not shown (${footage.error})`);
+        checkStop();
         setStep(`Screenshot of ${match.metaMatchId}…`, deps);
         const screenshot = await screenshotWithRetry(tabId, windowId, deps);
         checkStop();
