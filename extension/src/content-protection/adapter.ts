@@ -39,20 +39,17 @@ function matchVideo(): HTMLVideoElement | null {
   return [...document.querySelectorAll("video")].find((v) => !isExcludedRegion(v) && isElementVisible(v)) ?? null;
 }
 
-/** Clicks the first matching-segment chip, waits until the video is inside that segment, then makes
- * sure it's PLAYING there for the screenshot.
+/** Clicks the first matching-segment chip -- Meta's player then jumps to that segment and plays it
+ * on its own -- and waits, only watching the video, until it's playing inside the segment. Then a
+ * short beat for Facebook to fade its overlay before the screenshot.
  *
- * Playing, not paused (changed after the first live screenshots, 2026-10-09): Facebook's player
- * keeps its own thumbnail and ▶ button drawn over the video until playback actually starts, and
- * draws the ▶ again over a paused video -- a saved screenshot came back showing exactly that. So the
- * video is started (muted only if it already is, never unmuted) and given a moment to actually move
- * before the screenshot. If Chrome refuses playback (a synthetic click isn't a user gesture), the
- * paused frame is still inside the segment and the result says playing: false.
+ * The extension never touches the player itself: no play/pause, no seeking, no mute changes (team's
+ * call, 2026-10-09 -- an earlier version paused, then started playback, then seeked directly as a
+ * fallback). The chip click is the only interaction. If the video isn't playing inside the segment
+ * within the timeout, the result says so and the caller flags the record.
  *
  * "Inside the segment" is the chip's own start-end range: a looser "near the start" check passed
- * in testing on a video that had merely played up toward the segment from 0:00 without seeking.
- * If the click hasn't put the player there within a few seconds, the video is seeked directly as
- * a fallback -- it only changes the playback position, which is all a viewer could do anyway. */
+ * in testing on a video that had merely played up toward the segment from 0:00. */
 async function showMatchingFootage(): Promise<ShowFootageResult> {
   const chip = [...document.querySelectorAll<HTMLElement>('[role="button"][aria-label]')].find(
     (el) => SEGMENT_NAME_WHITELIST.test(cleanText(el.getAttribute("aria-label"))) && !isExcludedRegion(el) && isElementVisible(el)
@@ -68,37 +65,21 @@ async function showMatchingFootage(): Promise<ShowFootageResult> {
   const [, startClock, endClock] = SEGMENT_NAME_WHITELIST.exec(label)!;
   const segmentStart = clockToSeconds(startClock);
   const segmentEnd = clockToSeconds(endClock);
-  const showingSegment = () =>
-    video.readyState >= 2 && !video.seeking && video.currentTime >= segmentStart - 0.5 && video.currentTime <= segmentEnd + 1 ? true : null;
+  const inSegment = () =>
+    video.readyState >= 2 && !video.seeking && video.currentTime >= segmentStart - 0.5 && video.currentTime <= segmentEnd + 1;
 
   activate(chip);
-  try {
-    await waitForCondition("the matching footage after clicking the segment", showingSegment, { timeoutMs: 5_000 });
-  } catch (err) {
-    if (!(err instanceof WaitTimeoutError)) return { ok: false, error: errorMessage(err) };
-    // Fallback: seek the player straight to just inside the segment.
-    video.currentTime = Math.min(segmentStart + 0.5, segmentEnd);
-    try {
-      await waitForCondition("the matching footage", showingSegment, { timeoutMs: 8_000 });
-    } catch (err2) {
-      return { ok: false, error: err2 instanceof WaitTimeoutError ? "The matching footage didn't load in time." : errorMessage(err2) };
-    }
-  }
-  // Make sure it's playing, so Facebook drops its thumbnail/▶ overlay. Muted videos may always
-  // play; an unmuted one may be refused without a real user gesture -- left paused, never unmuted
-  // or muted on the user's behalf.
-  if (video.paused) await video.play().catch(() => undefined);
-  const startedAt = video.currentTime;
   let playing = false;
   try {
-    await waitForCondition("the video to start playing", () => (!video.paused && video.currentTime > startedAt + 0.3 ? true : null), {
-      timeoutMs: 4_000,
-    });
+    // Observe only: Meta's player seeks and starts playing by itself after the chip click.
+    await waitForCondition("the matching footage to play", () => (inSegment() && !video.paused ? true : null), { timeoutMs: 10_000 });
     playing = true;
-  } catch {
-    playing = false; // refused or stalled -- the frame is still inside the segment
+  } catch (err) {
+    if (!(err instanceof WaitTimeoutError)) return { ok: false, error: errorMessage(err) };
+    if (!inSegment()) return { ok: false, error: "The video didn't jump to the matching segment after clicking it." };
+    // In the segment but not playing -- left exactly as the player has it.
   }
-  // A beat for Facebook's player to fade its overlay out once playback has visibly started.
+  // A beat for Facebook's player to fade its overlay once playback has visibly started.
   await new Promise((resolve) => setTimeout(resolve, playing ? 700 : 300));
   return { ok: true, segment: label.replace(/^view matching segment\s*/i, ""), at: Math.round(video.currentTime * 10) / 10, playing };
 }

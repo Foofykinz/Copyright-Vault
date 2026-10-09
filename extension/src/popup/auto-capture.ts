@@ -255,7 +255,7 @@ export function footageNote(footage: ShowFootageResult): string {
   if (!footage.ok) return `⚠ matching footage not shown (${footage.error})`;
   return footage.playing
     ? `footage playing at ${clock(footage.at)}`
-    : `⚠ footage at ${clock(footage.at)} but paused (Facebook may show its ▶ over it)`;
+    : `⚠ footage at ${clock(footage.at)} but not playing (Facebook may show its ▶ over it)`;
 }
 
 /** Why this match gets no evidence record, or null when it should get one. */
